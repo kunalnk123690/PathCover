@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>quadrotor_description</name>
+  <version>0.0.0</version>
+  <description>The quadrotor_description package</description>
+  <maintainer email="kunalnk@udel.edu">kunal</maintainer>
+  <license>BSD-3-Clause</license>
+  <license>MIT</license>
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>roscpp</build_depend>
+  <build_export_depend>roscpp</build_export_depend>
+  <exec_depend>roscpp</exec_depend>  
+  <build_depend>geometry_msgs</build_depend>
+  <build_export_depend>geometry_msgs</build_export_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <build_depend>nav_msgs</build_depend>
+  <build_export_depend>nav_msgs</build_export_depend>  
+  <exec_depend>nav_msgs</exec_depend>  
+  <build_depend>sensor_msgs</build_depend>
+  <build_export_depend>sensor_msgs</build_export_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <build_depend>xacro</build_depend>
+  <build_export_depend>xacro</build_export_depend>
+  <exec_depend>xacro</exec_depend>  
+  <build_depend>tf</build_depend>
+  <build_export_depend>tf</build_export_depend>
+  <exec_depend>tf</exec_depend>
+  <build_depend>gazebo_msgs</build_depend>
+  <build_export_depend>gazebo_msgs</build_export_depend>
+  <exec_depend>gazebo_msgs</exec_depend>
+
+  <!-- Gazebo sensor plugins loaded by the xacros at runtime, not linked against:
+       velodyne_gazebo_plugins for the lidar (always used), hector_gazebo_plugins
+       for the IMU and gazebo_plugins for the depth/mono cameras (used when the
+       corresponding xacro include in quadrotor.xacro is enabled). -->
+  <exec_depend>velodyne_gazebo_plugins</exec_depend>
+  <exec_depend>hector_gazebo_plugins</exec_depend>
+  <exec_depend>gazebo_plugins</exec_depend>
+</package>

@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<robot>
+
+    <!-- Lidar -->
+    <link name="lidar_link">
+        <visual>
+            <origin xyz="0.0 0.0 -0.11" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://quadrotor_description/meshes/VLP16_base_1.dae" scale="0.9 0.9 0.9" />
+            </geometry>
+        </visual>
+        <visual>
+            <origin xyz="0.0 0.0 -0.11" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://quadrotor_description/meshes/VLP16_base_2.dae" scale="0.9 0.9 0.9"/>
+            </geometry>
+        </visual>
+        <visual>
+            <origin xyz="0.0 0.0 -0.11" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://quadrotor_description/meshes/VLP16_scan.dae" scale="0.9 0.9 0.9"/>
+            </geometry>
+        </visual>    
+    </link>
+    <joint name="lidar_joint" type="fixed">
+        <axis xyz="0 1 0" />
+        <origin xyz="0.0 0.0 0.25" rpy="0 0 0" />
+        <parent link="quadrotor_link" />
+        <child link="lidar_link" />
+    </joint>    
+
+
+    <gazebo reference="lidar_link">
+        <sensor type="ray" name="velodyne">
+            <pose>0 0 0 0 0 0</pose>
+            <visualize>false</visualize>
+            <update_rate>5</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>440</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-3.14159</min_angle>
+                        <max_angle>3.14159</max_angle>
+                    </horizontal>
+                    <vertical>
+                        <samples>16</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-0.261799387799149</min_angle>
+                        <max_angle>0.261799387799149</max_angle>
+                    </vertical>
+                </scan>
+                <range>
+                    <min>0.10</min>
+                    <max>100.0</max>
+                    <resolution>0.01</resolution>
+                </range>
+                <noise>
+                    <type>gaussian</type>
+                    <mean>0.0</mean>
+                    <stddev>0.001</stddev>
+                </noise>
+            </ray>
+            <plugin name="velodyne_gazebo_plugins" filename="libgazebo_ros_velodyne_laser.so">
+                <topicName>/quadrotor/velodyne/points</topicName>
+                <frameName>lidar_link</frameName>
+            </plugin>
+        </sensor>
+    </gazebo>
+
+
+</robot>

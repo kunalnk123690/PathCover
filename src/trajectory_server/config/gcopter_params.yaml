@@ -1,0 +1,52 @@
+# --- Topics (identical to trajectory_server/config/optim_params.yaml) ---
+OdometryTopic:            "/quadrotor/ground_truth"
+TrajectoryTopic:           "/quadrotor/trajectory"
+PolyhedraTopic:             "/quadrotor/polytopes"
+
+# --- Dynamic feasibility bounds (GCOPTER magnitudeBounds) ---
+v_max:                     3.0      # max velocity (m/s)
+omg_max:                   3.0      # max body rate (rad/s)
+theta_max:                 0.7854   # max tilt angle (rad), ~45 deg
+thrust_min:                2.0      # min thrust (N)
+thrust_max:                10.0     # max thrust (N)
+
+# --- Penalty weights for the soft constraints above (GCOPTER penaltyWeights) ---
+weight_pos:                10000.0
+weight_vel:                100.0
+weight_omg:                10000.0
+weight_theta:              10000.0
+weight_thrust:             10000.0
+
+# --- Physical parameters (GCOPTER physicalParams / flatness map) ---
+vehicle_mass:               0.716     # kg
+grav_acc:                   9.81    # m/s^2
+horiz_drag:                 0.0     # horizontal drag coefficient
+vert_drag:                  0.0     # vertical drag coefficient
+paras_drag:                 0.0     # parasitic drag coefficient
+speed_eps:                  0.001   # speed smoothing factor (avoids div-by-zero)
+
+# --- MINCO / L-BFGS optimization settings ---
+weight_time:                 100.0   # rho, time-regularization weight
+smoothing_eps:               0.01   # penalty smoothing factor
+integral_resolution:         16      # integration steps per piece for penalty integral
+length_per_piece:            2.0   # desired path length per MINCO piece (m)
+rel_cost_tol:                1.0e-4 # L-BFGS relative cost convergence tolerance
+
+# What derivative the smoothness cost minimizes, and the resulting polynomial
+# degree per piece: 3 = minimum jerk, degree-5 (default); 4 = minimum snap,
+# degree-7 (smoother/more pieces, more expensive to solve, boundary state
+# adds an initial+terminal jerk of 0).
+cost_order:                   3
+
+# --- Corridor safety margin ---
+SafetyMargin:                 0.7    # meters; shrinks each corridor half-space inward
+                                      # before optimization (same role as
+                                      # trajectory_server's SafetyMargin)
+
+# --- Receding horizon ---
+ReplanPeriod:                0.5    # seconds between replans
+GoalReachedThreshold:        0.2    # meters
+
+# --- Yaw control (identical behavior to trajectory_server) ---
+YawDotMax:                  3.14159265/2
+LowSpeedThreshold:           0.1

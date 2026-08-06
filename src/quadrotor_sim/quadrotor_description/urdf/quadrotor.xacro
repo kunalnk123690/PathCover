@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+<robot name="quadrotor" xmlns:xacro="http://www.ros.org/wiki/xacro">
+    
+    <xacro:property name="M_PI" value="3.14159265358979323846" />
+    
+    <link name="base_link" />
+
+    <joint name="floating_base" type="fixed">
+        <origin rpy="0 0 0" xyz="0 0 0" />
+        <parent link="base_link" />
+        <child link="quadrotor_link" />
+    </joint>
+
+    <link name="quadrotor_link">
+        <inertial>
+            <mass value="0.716" />
+            <origin rpy="0 0 0" xyz="0 0 0" />
+            <inertia ixx="0.007" ixy="0" ixz="0" iyy="0.007" iyz="0" izz="0.012" />
+        </inertial>
+        <collision name="quadrotor_collision">
+            <origin rpy="0 0 0" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="package://quadrotor_description/meshes/f250.dae" scale="0.8 0.8 0.8" />
+            </geometry>
+        </collision>
+        <visual name="quadrotor_visual">
+            <origin rpy="0 0 0" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="package://quadrotor_description/meshes/f250.dae" scale="0.8 0.8 0.8" />
+            </geometry>
+        </visual>
+    </link>
+
+
+    <!-- ground truth odometry (pose) -->
+    <gazebo>
+        <plugin name="quadrotor_odometry" filename="libgazebo_ros_p3d.so">
+            <alwaysOn>true</alwaysOn>
+            <updateRate>500</updateRate>
+            <bodyName>base_link</bodyName>
+            <frameName>world</frameName>
+            <topicName>/quadrotor/ground_truth</topicName>
+            <gaussianNoise>0.0</gaussianNoise>
+            <xyzOffsets>0 0 0</xyzOffsets>
+            <rpyOffsets>0 0 0</rpyOffsets>
+        </plugin>
+    </gazebo>
+
+
+    <!-- Geometric Controller Plugin -->
+    <gazebo>
+        <plugin name="quadrotor_gazebo_plugin" filename="libquadrotor_gazebo_plugin.so">
+            <wrenchFrame>base_link</wrenchFrame>
+            <trajectoryTopic>/quadrotor/trajectory</trajectoryTopic>
+            <!-- <KP>6.4 6.4 6.4</KP>
+            <KD>4.3 4.3 4.3</KD>
+            <KR>1.0 1.0 0.77</KR>
+            <KW>0.15 0.15 0.19</KW> -->
+            <!-- For aggressive maneuvers (may cause instability): -->
+            <KP>14.5 14.5 14.5</KP>
+            <KD>5.8 5.8 5.8</KD>
+            <KR>2.2 2.2 1.7</KR>
+            <KW>0.21 0.21 0.25</KW>
+        </plugin>
+    </gazebo>
+
+
+    <!-- Additional Sensors -->
+    <xacro:include filename="$(find quadrotor_description)/urdf/lidar.xacro" />
+    <!-- <xacro:include filename="$(find quadrotor_description)/urdf/depth_camera.xacro" />
+    <xacro:include filename="$(find quadrotor_description)/urdf/imu.xacro" />
+    <xacro:include filename="$(find quadrotor_description)/urdf/monocular_camera.xacro" /> -->
+
+</robot>

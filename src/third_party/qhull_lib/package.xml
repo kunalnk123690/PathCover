@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>qhull_lib</name>
+  <version>0.0.0</version>
+  <description>The qhull_lib package</description>
+  <maintainer email="homepc@todo.todo">homepc</maintainer>
+  <buildtool_depend>catkin</buildtool_depend>
+  <license>Qhull</license>
+  <depend>roscpp</depend>
+</package>

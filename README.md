@@ -377,15 +377,11 @@ the third-party section of [`LICENSE`](LICENSE).
 ## Citing this work
 
 If you use RISP or PathCover in your work, please cite the paper
-([`RISP_final.pdf`](RISP_final.pdf)). It is currently under review in anonymized form —
-update this entry on acceptance.
-
 ```bibtex
 @article{pathcover,
-  title  = {PathCover: A Fast Convex Decomposition along a Path via
-            Randomized Iterative Space Partitioning (RISP) on Point Clouds},
-  author = {TODO},
-  year   = {TODO},
-  note   = {Under review}
+  title  = {\texttt{PathCover}: A Fast Convex Decomposition along a Path via Randomized Iterative Space Partitioning (\texttt{RISP}) on Point Clouds},
+  author = {Narkhede, Kunal Sanjay and Kulkarni Mangesh, Abhijeet and  Guoquan, Huang and Poulakakis, Ioannis},
+  journal = {arXiv:2608.05586},
+  year   = {2026}
 }
 ```

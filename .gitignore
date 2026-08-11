@@ -7,3 +7,4 @@ src/CMakeLists.txt
 *__pycache__
 *.vscode
 *.bag
+*.zip

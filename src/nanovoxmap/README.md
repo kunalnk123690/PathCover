@@ -168,8 +168,20 @@ GPU and CPU fields come out bit-identical (max difference `0.000e+00`).
 
 ## Running
 
+The node is started as part of the full stack, with
+[`config/mapping.yaml`](config/mapping.yaml) loaded onto it:
+
 ```sh
-roslaunch jackal_description mapping.launch
+roslaunch corridor_planning corridor_generation.launch
+```
+
+To run the mapper on its own against an existing cloud + odometry source:
+
+```sh
+rosrun nanovoxmap nanovoxmap_node _CloudTopic:=/quadrotor/velodyne/points \
+                                 _OdometryTopic:=/quadrotor/velodyne/ground_truth \
+                                 _OutputTopic:=/nanovoxmap/Voxel_map \
+                                 _VoxelResolution:=0.05
 ```
 
 ## No-return frustum clearing

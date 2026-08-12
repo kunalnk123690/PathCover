@@ -1,3 +1,4 @@
+# Quadrotor mapping parameters
 OdometryTopic:          "/quadrotor/velodyne/ground_truth"
 CloudTopic:             "/quadrotor/velodyne/points"
 # OdometryTopic:          "/quadrotor/realsense/ground_truth"

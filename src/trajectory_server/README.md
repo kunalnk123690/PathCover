@@ -2,19 +2,23 @@
 
 Receding-horizon trajectory optimizer. It consumes the corridor published by
 [`corridor_planning`](../corridor_planning) as `polytope_msgs/Polytopes` and solves a
-corridor-constrained, dynamically feasible trajectory with **GCOPTER / MINCO**, publishing the
-sampled setpoint (position through snap, plus yaw) that the geometric controller tracks.
+corridor-constrained, dynamically feasible trajectory with **GCOPTER / MINCO**. The 3-D build
+publishes flat-output setpoints to the quadrotor controller; the 2-D build tracks the planar
+trajectory with differential-drive velocity commands.
 
 The optimizer itself ([`include/gcopter/`](include/gcopter)) is
 [GCOPTER](https://github.com/ZJU-FAST-Lab/GCOPTER) by Zhepei Wang and Fei Gao, vendored under its
-own MIT license ([`LICENSE`](LICENSE)). What this package adds is the ROS node, the receding-horizon
+own MIT license ([`LICENSE.GCOPTER`](LICENSE.GCOPTER)). What this package adds is the ROS node, the receding-horizon
 loop, and a thin solver wrapper that makes the MINCO order selectable at runtime.
 
 ## How the loop runs
 
-A 100 Hz timer ([`trajectory_server_node.cpp`](src/trajectory_server_node.cpp)) drives everything:
+The implementation is selected with `PATHCOVER_EXAMPLE`: quadrotor uses 3-D at 100 Hz and Jackal
+uses 2-D at 50 Hz. The control loop lives in
+[`trajectory_server.cpp`](src/trajectory_server.cpp); `trajectory_server_node.cpp` is the shared
+ROS entry point.
 
-1. **Replan** every `ReplanPeriod` seconds. Boundary conditions are re-seeded from the drone's
+1. **Replan** every `ReplanPeriod` seconds. Boundary conditions are re-seeded from the robot's
    *actual* current state each time — position and velocity from odometry, acceleration (and
    jerk, for the snap-cost case) set to zero rather than carried forward from the previous
    solve, so a solve's own artifacts are never fed back in as the next replan's hard boundary
@@ -23,12 +27,13 @@ A 100 Hz timer ([`trajectory_server_node.cpp`](src/trajectory_server_node.cpp)) 
    exits the last polytope — with zero terminal velocity/acceleration. Because only the near-term
    part of each solve is executed before the next replan, the terminal condition mostly shapes
    the unexecuted tail and is deliberately kept neutral.
-3. **Sample** the current trajectory at the timer rate and publish it as
-   `quadrotor_msgs/TrajectoryCommand`.
-4. **Hover** if there is no corridor yet, or if the first solve has not succeeded. A failed
-   replan with a previously valid trajectory keeps flying the old one.
+3. **Sample** the current trajectory at the timer rate. Quadrotor publishes
+   `quadrotor_msgs/TrajectoryCommand`; Jackal applies a unicycle tracking law and publishes
+   `geometry_msgs/Twist`.
+4. **Hold** if there is no corridor yet, or if the first solve has not succeeded. A failed
+   replan with a previously valid trajectory keeps using the old one.
 
-Yaw is generated separately from the desired horizontal velocity direction, rate-limited by
+For the quadrotor, yaw is generated separately from the desired horizontal velocity direction, rate-limited by
 `YawDotMax` and frozen below `LowSpeedThreshold` so the vehicle does not spin while nearly
 stationary.
 
@@ -40,10 +45,13 @@ means the inward shift is exactly `SafetyMargin` metres whether or not the rows 
 This is applied *on top of* `corridor_planning`'s `DeflationFactor`; the two stack, so setting
 both means the corridor is shrunk twice.
 
-A `Polytopes` message with no polytopes, or without a valid 3-element `goal`, is rejected and the
-node holds position.
+A `Polytopes` message with no polytopes, or without a goal matching the selected dimension, is
+rejected and the node holds position.
 
-## Parameters — [`config/gcopter_params.yaml`](config/gcopter_params.yaml)
+## Parameters
+
+Quadrotor uses [`config/gcopter_params_drone.yaml`](config/gcopter_params_drone.yaml); Jackal uses
+[`config/gcopter_params_jackal.yaml`](config/gcopter_params_jackal.yaml).
 
 ### Topics (required)
 
@@ -53,7 +61,10 @@ node holds position.
 | `PolyhedraTopic` | Input corridor (`polytope_msgs/Polytopes`) |
 | `TrajectoryTopic` | Output setpoint (`quadrotor_msgs/TrajectoryCommand`) |
 
-### Dynamic feasibility bounds
+For Jackal, `CmdVelTopic` replaces `TrajectoryTopic`; `OdomTwistInBodyFrame` declares the frame of
+the odometry twist.
+
+### Quadrotor dynamic feasibility bounds
 
 `v_max` is required; the rest have defaults.
 
@@ -68,7 +79,7 @@ These are enforced as *soft* constraints, weighted by `weight_pos`, `weight_vel`
 `weight_theta`, `weight_thrust` (all default `1.0e4`). `weight_pos` is the corridor-violation
 weight.
 
-### Vehicle model (flatness map)
+### Quadrotor vehicle model (flatness map)
 
 | Parameter | Default | Meaning |
 |---|---|---|
@@ -107,6 +118,11 @@ weight.
 | pub | `TrajectoryTopic` (`/quadrotor/trajectory`) | `quadrotor_msgs/TrajectoryCommand` (position → snap, yaw, yaw rate) |
 | pub | `/colored_trajectory` | `nav_msgs/Path` — the solved trajectory sampled at 20 Hz, for RViz |
 
+In the Jackal build the corresponding topics default to `/jackal/polytopes`,
+`/jackal/ground_truth`, and `/jackal_velocity_controller/cmd_vel`; the command type is
+`geometry_msgs/Twist`. Its additional feasibility parameters are `a_max` and `curvature_eps`, and
+its tracking gains are `k_x`, `k_y`, `k_theta`, `k_align`, and `HeadingAlignTolerance`.
+
 ## Swapping this out
 
 Nothing above is required by PathCover. The corridor is published on a plain ROS topic, so any
@@ -123,17 +139,23 @@ include/
   gcopter/                 vendored GCOPTER (MIT): gcopter, minco, flatness, lbfgs,
                            trajectory, geo_utils, quickhull, root_finder, sdlp
 src/
-  trajectory_server_node.cpp   node implementation + main()
+  trajectory_server.cpp        build-selected 2-D/3-D implementation
+  trajectory_server_node.cpp   shared main()
 config/
-  gcopter_params.yaml          parameters documented above
+  gcopter_params_drone.yaml    quadrotor parameters
+  gcopter_params_jackal.yaml   Jackal parameters
 ```
 
 ## Dependencies
 
 `roscpp`, `nav_msgs`, `geometry_msgs`, `visualization_msgs`,
-[`polytope_msgs`](../polytope_msgs), [`quadrotor_msgs`](../quadrotor_sim/quadrotor_msgs), Eigen.
+[`polytope_msgs`](../polytope_msgs), Eigen, and either
+[`quadrotor_msgs`](../quadrotor_sim/quadrotor_msgs) (quadrotor) or `tf` (Jackal).
 
 ## Licence
 
 This package's own code is BSD 3-Clause, as with the rest of the repository. The vendored
-`include/gcopter/` tree is MIT and governed by [`LICENSE`](LICENSE).
+GCOPTER / MINCO files are MIT and governed by [`LICENSE.GCOPTER`](LICENSE.GCOPTER). The embedded
+`sdlp.hpp` retains Michael E. Hohmeyer's permissive redistribution notice and Zhepei Wang's
+modification notice; `quickhull.hpp` credits Antti Kuukka and is marked public domain. Those
+notices remain in the respective source files.

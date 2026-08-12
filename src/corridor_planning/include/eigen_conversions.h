@@ -207,6 +207,89 @@ void convertAndFilter(const sensor_msgs::PointCloud2 &msg,
 }
 
 
+// Planar variant used by the Jackal port. The map is still a 3D voxel cloud,
+// but a ground robot only cares about the slab of it that its body can
+// actually collide with, so this takes one pass over the raw PointCloud2 and:
+//
+//   1. drops everything outside [zMin, zMax] -- this is what removes the
+//      ground plane below the robot and the ceiling / overhanging geometry
+//      above it, neither of which is an obstacle for a Jackal;
+//   2. drops returns within `radius` of the robot, which are self-hits and
+//      would otherwise leave the RISP seed point with no strictly-feasible
+//      interior;
+//   3. projects what survives to (x, y).
+//
+// The z band is in world coordinates, matching the frame the map publishes in.
+template <typename T>
+void convertSliceAndFilter(const sensor_msgs::PointCloud2 &msg,
+                           const Eigen::Matrix<T, 2, 1> &start,
+                           const T radius,
+                           const T zMin,
+                           const T zMax,
+                           std::vector<Eigen::Matrix<T, 2, 1>> &out) {
+
+  const uint32_t num_points = msg.height * msg.width;
+  if (num_points == 0) {
+    out.clear();
+    return;
+  }
+
+  // Compile-time constant offsets for standard packed PointCloud2 layouts.
+  // In ROS, standard XYZ clouds typically have x=0, y=4, z=8. We use a fast-path
+  // check to bypass the dynamic field lookup if it matches standard packing.
+  int x_offset = 0, y_offset = 4, z_offset = 8;
+
+  if (msg.fields.size() < 3 ||
+      msg.fields[0].name != "x" || msg.fields[0].offset != 0 ||
+      msg.fields[1].name != "y" || msg.fields[1].offset != 4 ||
+      msg.fields[2].name != "z" || msg.fields[2].offset != 8) {
+
+    // Fallback to dynamic lookup if the layout is non-standard
+    x_offset = -1; y_offset = -1; z_offset = -1;
+    for (const auto &field : msg.fields) {
+      if (field.name == "x") x_offset = field.offset;
+      else if (field.name == "y") y_offset = field.offset;
+      else if (field.name == "z") z_offset = field.offset;
+    }
+
+    if (x_offset < 0 || y_offset < 0 || z_offset < 0) {
+      ROS_ERROR("convertSliceAndFilter: cloud is missing x/y/z fields.");
+      out.clear();
+      return;
+    }
+  }
+
+  out.clear();
+  out.reserve(num_points);
+
+  const uint8_t * __restrict__ data_ptr = msg.data.data();
+  const uint32_t point_step = msg.point_step;
+
+  const T sx = start.x();
+  const T sy = start.y();
+  const T r2 = radius * radius;
+
+  for (uint32_t i = 0; i < num_points; ++i) {
+    const uint8_t * __restrict__ p = data_ptr + (static_cast<size_t>(i) * point_step);
+
+    const T z = static_cast<T>(*reinterpret_cast<const float*>(p + z_offset));
+    if (z < zMin || z > zMax) {
+      continue;
+    }
+
+    const T x = static_cast<T>(*reinterpret_cast<const float*>(p + x_offset));
+    const T y = static_cast<T>(*reinterpret_cast<const float*>(p + y_offset));
+
+    const T dx = x - sx;
+    const T dy = y - sy;
+
+    if ((dx * dx) + (dy * dy) > r2) {
+      out.emplace_back(x, y);
+    }
+  }
+}
+
+
 } // namespace EigenCloudConversions
 
 #endif // EIGEN_CONVERSIONS_H

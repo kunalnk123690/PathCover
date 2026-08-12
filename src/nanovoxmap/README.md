@@ -125,7 +125,7 @@ Optional (defaults shown):
 | `EsdfPublishSlice` | `true` | Publish one horizontal slice instead of the whole 3D band (far fewer points, and the usual way to inspect it in RViz) |
 | `EsdfSliceHeight` | `0.0` | World `z` of that slice, in metres |
 
-See [`config/mapping.yaml`](config/mapping.yaml) for a working example.
+See [`config/mapping_drone.yaml`](config/mapping_drone.yaml) for a working quadrotor example.
 
 ## Building
 
@@ -169,7 +169,7 @@ GPU and CPU fields come out bit-identical (max difference `0.000e+00`).
 ## Running
 
 The node is started as part of the full stack, with
-[`config/mapping.yaml`](config/mapping.yaml) loaded onto it:
+[`config/mapping_drone.yaml`](config/mapping_drone.yaml) loaded onto it:
 
 ```sh
 roslaunch corridor_planning corridor_generation.launch
@@ -421,5 +421,6 @@ src/
 test/
   esdf_test.cpp          standalone ESDF correctness + benchmark checks (no ROS)
 config/
-  mapping.yaml           example parameter set
+  mapping_drone.yaml     quadrotor parameter set
+  mapping_jackal.yaml    Jackal parameter set
 ```

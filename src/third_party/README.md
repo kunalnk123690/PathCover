@@ -18,7 +18,7 @@ Builds one shared library, `jps_lib`, from two planners:
 - **DMP** (`distance_map_planner/`) — a distance-map planner that refines the raw JPS path,
   pushing it away from obstacles. Its `setPotentialRadius` / `setSearchRadius` are what
   `DmPotentialRadius` / `DmPSearchRadius` in
-  [`global_planning.yaml`](../corridor_planning/config/global_planning.yaml) configure.
+  [`global_planning_drone.yaml`](../corridor_planning/config/global_planning_drone.yaml) configure.
 
 The refined path is the input to PathCover — corridor quality depends on it, since PathCover
 covers whatever path it is handed. `jps_basis/` supplies the shared `Vec3f` / `vec_Vecf` types

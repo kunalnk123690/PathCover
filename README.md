@@ -1,14 +1,17 @@
 # PathCover
 
-<video src="./images/simulation.mp4" autoplay loop muted playsinline width="100%">
+<video src="./media/simulation_drone.mp4" autoplay loop muted playsinline width="100%">
 </video>
 
-**PathCover** is developed aiming to enable fast convex decomposition along a path, at sensor rate, directly on raw point clouds. At its core is **RISP** (Randomized Iterative Space Partitioning), a single cheap geometric operation that replaces the optimization loop used by conventional free-space inflation methods. Around it, this repository ships everything needed to run the algorithm in closed loop: a sparse voxel mapper, a global path search, a corridor-constrained trajectory optimizer, and a Gazebo quadrotor with a geometric controller.
+<video src="./media/simulation_jackal.mp4" autoplay loop muted playsinline width="100%">
+</video>
+
+
+
+**PathCover** is developed in order to enable fast convex decomposition along a path, at sensor frequency, directly on point clouds. At its core is **RISP** (Randomized Iterative Space Partitioning), a fast geometric operation that replaces the optimization loop used by state of the art conventional convex decomposition methods. Around it, this repository ships everything needed to run the algorithm in closed loop: a sparse voxel mapper, a global path search, a corridor-constrained trajectory optimizer, and Gazebo examples for a quadrotor and a differential-drive wheeled robot Jackal.
 
 __Authors__: [Kunal Sanjay Narkhede](https://github.com/kunalnk123690), Abhijeet Mangesh Kulkarni, Guoquan Huang and Ioannis Poulakakis from the Department of Mechanical Engineering, University of Delaware.
 
-
-Online replanning in the bundled `floorplan1` world. The sparse voxel map (rainbow) builds from LiDAR as the quadrotor flies; **PathCover** regenerates the convex corridor (blue polytopes) from scratch on every scan, and the optimizer solves for a trajectory (green) through it along the reference path (red).
 
 Please give us a star and cite our paper if you use this project in your research:
 
@@ -34,9 +37,9 @@ Please give us a star and cite our paper if you use this project in your researc
 
 ## 1. Quick Start
 
-This project has been tested on Ubuntu 20.04 (ROS Noetic) with C++17.
+Tested on Ubuntu 20.04 (ROS Noetic) with C++17. The fastest path is the bundled Docker image, which carries ROS Noetic desktop-full, Gazebo, and the CUDA toolkit — three commands from a clone to a robot flying through a corridor.
 
-The fastest path is the bundled Docker image, which carries ROS Noetic desktop-full, Gazebo, and the CUDA toolkit:
+### Step 1 — build the docker image
 
 ```
 git clone https://github.com/kunalnk123690/PathCover.git
@@ -44,17 +47,44 @@ cd PathCover
 ./run_docker.sh
 ```
 
-`run_docker.sh` builds the image and drops you in a shell at the workspace. Then, inside the container, build and launch everything with one command:
+[`run_docker.sh`](run_docker.sh) builds the image and drops you into a shell at `/home/PathCover/PathCover_ws`, with this repository mounted there and X11 forwarded so Gazebo and RViz open on your desktop. It probes for `nvidia-smi` **and** the NVIDIA container runtime, and requests a GPU only when both are present, so the same script works unchanged on a CPU-only machine. Set `INSTALL_CUDA=true|false` to force the toolkit in or out of the image regardless of the build host.
+
+If you use VS Code, open the folder and *Reopen in Container* instead — [`.devcontainer/`](.devcontainer) sets up the same mount and X11 forwarding, and declares `hostRequirements.gpu: optional` so it attaches a GPU when one exists and starts normally when it does not.
+
+### Step 2 — Build and launch an example
+
+Two robots ship with the repository, each with a one-line script that builds the workspace and launches the full stack. Run it from the workspace root, inside the container:
+
+| Robot | Command | World | Control output |
+|---|---|---|---|
+| Quadrotor | `./launch_sim_drone.sh` | `floorplan1_static.world` (office-like) | geometric controller, via `quadrotor_gazebo_plugin` |
+| Jackal (differential drive) | `./launch_sim_jackal.sh` | `parking_lot.world` | velocity commands, via the diff-drive controller |
+
+Each script is the same three steps — `catkin_make` with the robot selector, `source devel/setup.bash`, then `roslaunch corridor_planning corridor_generation_{drone,jackal}.launch`:
 
 ```
-./launch_sim.sh
+catkin_make -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release -DPATHCOVER_EXAMPLE=quadrotor
 ```
 
-You will find the office-like map, the quadrotor, and the corridor in ```Rviz```. You can select goals for the drone to reach using the ```2D Nav Goal``` tool. A sample simulation is shown in the [video](images/simulation.mp4) at the top of this page.
+`PATHCOVER_EXAMPLE` (`quadrotor` or `jackal`) selects which robot description, Gazebo plugins, and corridor/trajectory parameters are built. It is a cached CMake variable, so switching robots is just running the other script — no config editing, and no need to wipe `build/`.
 
-`run_docker.sh` probes for `nvidia-smi` and the NVIDIA container runtime and only requests a GPU when both are present, so the same script works on a CPU-only machine. Set `INSTALL_CUDA=true|false` to force the toolkit in or out of the image regardless of the build host.
+The first build takes a few minutes; later runs of the same script only rebuild what changed.
 
-Alternatively, if you use VS Code, open the folder and *Reopen in Container*. [`.devcontainer/`](.devcontainer) mounts the workspace at `/home/quadrotor/quadrotor_ws`, forwards X11, and declares `hostRequirements.gpu: optional` so it attaches a GPU when one exists and starts normally when it does not.
+### Step 3 — Send it a goal
+
+Gazebo and RViz come up with the world, the robot, and the mapper already running. Pick a destination with RViz's **2D Nav Goal** tool (published on `/move_base_simple/goal`) and the robot plans and drives to it: the corridor is drawn in blue, the reference path in red, and the optimized trajectory in green, all regenerated from scratch on every scan. A sample run is in the [video](media/simulation_drone.mp4) at the top of this page.
+
+### Other worlds
+
+The Jackal launch file takes a `world_name` argument, and [`jackal_description/worlds/`](src/jackal_description/worlds) bundles several (`office.world`, `jackal_race.world`, `willow_garage.world`, `random_*.world`, …). Build once with the script, then launch directly:
+
+```
+source devel/setup.bash
+roslaunch corridor_planning corridor_generation_jackal.launch \
+  world_name:=$(rospack find jackal_description)/worlds/office.world
+```
+
+The quadrotor world is fixed inside [`corridor_generation_drone.launch`](src/corridor_planning/launch/corridor_generation_drone.launch#L8) — edit that line to change it.
 
 
 ## 2. Build without Docker
@@ -66,6 +96,9 @@ Ubuntu 20.04 with ROS Noetic. We use [__Eigen__](https://eigen.tuxfamily.org/) f
 ```
 sudo apt install ros-noetic-desktop-full ros-noetic-message-filters \
                  ros-noetic-gazebo-ros ros-noetic-velodyne ros-noetic-velodyne-simulator \
+                 ros-noetic-controller-manager ros-noetic-twist-mux \
+                 ros-noetic-interactive-marker-twist-server \
+                 ros-noetic-joint-state-controller ros-noetic-diff-drive-controller \
                  libeigen3-dev libcdd-dev build-essential
 ```
 
@@ -93,12 +126,12 @@ For installation of CUDA, please go to [CUDA ToolKit](https://developer.nvidia.c
 Build the workspace, source it, and launch the whole system:
 
 ```
-  catkin_make -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release
+  catkin_make -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release -DPATHCOVER_EXAMPLE=quadrotor
   source devel/setup.bash
-  roslaunch corridor_planning corridor_generation.launch
+  roslaunch corridor_planning corridor_generation_drone.launch
 ```
 
-The three commands above are exactly what [`launch_sim.sh`](launch_sim.sh) runs, so `./launch_sim.sh` is equivalent.
+The three commands above are exactly what [`launch_sim_drone.sh`](launch_sim_drone.sh) runs, so `./launch_sim_drone.sh` is equivalent. [`launch_sim_jackal.sh`](launch_sim_jackal.sh) is the same flow with `-DPATHCOVER_EXAMPLE=jackal` and `corridor_generation_jackal.launch`.
 
 This brings up Gazebo, the quadrotor, the mapper, corridor generation, the trajectory optimizer, and RViz. At this time, you can trigger the planner using the ```2D Nav Goal``` tool (published on `/move_base_simple/goal`). When a point is clicked in ```Rviz```, the corridor (blue), the reference path (red), and the optimized trajectory (green) are regenerated from scratch on every scan. The mapper's ESDF is published on `/nanovoxmap/esdf` — colour by `intensity` in RViz to inspect it.
 
@@ -118,6 +151,7 @@ All algorithms, parameters, ROS interfaces, and instructions for using PathCover
 | [__trajectory_server__](src/trajectory_server) | Receding-horizon trajectory optimizer. GCOPTER/MINCO over the corridor, with a generalized min-jerk (degree 5) / min-snap (degree 7) solver. See its [README](src/trajectory_server/README.md) |
 | [__polytope_msgs__](src/polytope_msgs) | `Polytope` (`A`, `b`, `seed`) and `Polytopes` (corridor + goal) messages — the interface between corridor generation and any downstream planner. See its [README](src/polytope_msgs/README.md) |
 | [__quadrotor_sim__](src/quadrotor_sim) | The test vehicle: a URDF with a VLP-16 lidar, a geometric controller plugin, ground-truth odometry, and the office-like world it flies in. See its [README](src/quadrotor_sim/README.md) |
+| [__jackal_description__](src/jackal_description) | The differential-drive example: Jackal URDF, controllers, sensors, ground-truth TF/odometry, RViz setup, and the bundled Gazebo worlds. See its [README](src/jackal_description/README.md) |
 | [__third_party__](src/third_party) | [JPS3D + distance-map planner](src/third_party/jps_lib) for the global path search, and [Qhull](src/third_party/qhull_lib) for dual-space redundancy removal. See its [README](src/third_party/README.md) |
 
 To use PathCover in your own project, start with [corridor_planning](src/corridor_planning/README.md#library-usage) — RISP and PathCover are header-only, ROS-free, and templated on scalar type and dimension, needing only Eigen and Qhull. To keep the corridor generator but replace everything downstream, subscribe to `/quadrotor/polytopes` and see [polytope_msgs](src/polytope_msgs/README.md).
@@ -131,18 +165,25 @@ This project stands on a number of open-source works. Their licenses are retaine
 
 | Component | Author | Used for | License |
 |---|---|---|---|
-| [GCOPTER / MINCO](https://github.com/ZJU-FAST-Lab/GCOPTER) — `trajectory_server/include/gcopter/` | Zhepei Wang, Fei Gao (ZJU FAST Lab) | The corridor-constrained trajectory optimizer, and the L-BFGS, flatness, and geometry utilities around it | MIT — [`LICENSE`](src/trajectory_server/LICENSE) |
+| [GCOPTER / MINCO](https://github.com/ZJU-FAST-Lab/GCOPTER) — `trajectory_server/include/gcopter/` | Zhepei Wang, Fei Gao (ZJU FAST Lab) | The corridor-constrained trajectory optimizer, and the L-BFGS, flatness, and geometry utilities around it | MIT — [`LICENSE.GCOPTER`](src/trajectory_server/LICENSE.GCOPTER) |
 | [JPS3D + distance-map planner](https://github.com/KumarRobotics/jps3d) — `third_party/jps_lib` | Sikang Liu (KumarRobotics) | The global path search feeding PathCover | BSD 3-Clause — [`LICENSE`](src/third_party/jps_lib/LICENSE) |
 | [Qhull](http://www.qhull.org/) — `third_party/qhull_lib` | C. B. Barber, D. P. Dobkin, H. Huhdanpaa | Convex hulls in the dual space, for RISP's redundant-constraint removal | [Qhull License](http://www.qhull.org/COPYING.txt) |
+| Jackal description and simulation package — `jackal_description/` | Supplied package notice: Clearpath Robotics Inc. | Jackal URDF, meshes, controllers, TF/odometry helper, RViz configuration, and worlds | BSD 3-Clause, with sensor-mesh exceptions below — [`LICENSE`](src/jackal_description/LICENSE) |
 
 ### Bundled assets
 
 | Asset | Author | Used for | License |
 |---|---|---|---|
 | Gazebo world — `quadrotor_description/worlds/floorplan1/` | Zhefan Xu, [uav_simulator](https://github.com/Zhefan-Xu/uav_simulator) | The office-like environment the quadrotor flies in | MIT — [`LICENSE.uav_simulator`](src/quadrotor_sim/quadrotor_description/worlds/floorplan1/LICENSE.uav_simulator) |
-| VLP-16 meshes — `quadrotor_description/meshes/VLP16_*.dae` | Dataspeed Inc., [velodyne_simulator](https://github.com/lmark1/velodyne_simulator) | Visual model of the lidar on the robot | BSD |
+| VLP-16 meshes in the quadrotor and Jackal packages | Dataspeed Inc., [velodyne_simulator](https://github.com/lmark1/velodyne_simulator) | Visual model of the lidar on both robots | BSD — [`LICENSE.velodyne_simulator`](LICENSE.velodyne_simulator) |
+| D435 meshes in the quadrotor and Jackal packages | Intel Corporation and contributors, [realsense-ros](https://github.com/IntelRealSense/realsense-ros) | Visual model of the optional depth camera | Apache-2.0 — [`LICENSE.realsense2_description`](LICENSE.realsense2_description) |
 
-Everything else in `quadrotor_sim` — the URDF/xacro robot and sensor descriptions, the geometric controller and model plugin, the ground-truth odometry node, and the RViz configuration — is original work under this repository's license.
+Except for the world and sensor meshes identified above, `quadrotor_sim` — including its
+URDF/xacro descriptions, geometric controller and model plugin, ground-truth odometry node, and
+RViz configuration — is original work under this repository's license.
+
+The imported `jackal_description` package retains Clearpath Robotics' BSD 3-Clause notice. Local
+PathCover integration outside that package remains covered by the repository license.
 
 ### Runtime dependencies
 

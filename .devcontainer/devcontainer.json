@@ -1,12 +1,18 @@
 {
-    "name": "ROS Development Container for quadrotor gazebo container",
+    "name": "ROS Development Container for PathCover gazebo container",
     "privileged": true,
-    "remoteUser": "quadrotor",
+    "remoteUser": "PathCover",
+    // "--network=host" builds on the host network stack rather than the default
+    // bridge. On a VPN with a sub-1500 MTU (Cisco AnyConnect's cscotun0 uses
+    // 1390) the bridge black-holes full-size packets, so apt connects but its
+    // .deb downloads stall and time out. Inheriting the host MTU avoids that,
+    // and is a no-op off-VPN.
     "build": {
-        "dockerfile": "Dockerfile"
+        "dockerfile": "Dockerfile",
+        "options": ["--network=host"]
     },
-    "workspaceFolder": "/home/quadrotor/quadrotor_ws",
-    "workspaceMount": "source=${localWorkspaceFolder},target=/home/quadrotor/quadrotor_ws,type=bind",
+    "workspaceFolder": "/home/PathCover/PathCover_ws",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/home/PathCover/PathCover_ws,type=bind",
     "customizations": {
         "vscode": {
             "extensions":[

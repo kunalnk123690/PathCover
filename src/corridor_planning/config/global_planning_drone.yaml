@@ -1,3 +1,4 @@
+# Quadrotor planning parameters
 # MapTopic:                   "/fast_mapping/Voxel_map"
 MapTopic:                   "/nanovoxmap/Voxel_map"
 GroundTruthTopic:           "/quadrotor/ground_truth"

@@ -14,7 +14,8 @@ with only Eigen and Qhull as dependencies — see [Library usage](#library-usage
 Per cycle, `corridor_planning_node`:
 
 1. Converts the latest voxel-map cloud to an Eigen point cloud, dropping returns within
-   `FilterRadius` (in XY) of the robot so the seed stays strictly interior.
+   `FilterRadius` (in XY) of the robot so the seed stays strictly interior. The Jackal build also
+   keeps only `ObstacleZMin <= z <= ObstacleZMax` and projects that slice into XY.
 2. Rasterizes it into a fixed-extent occupancy grid and runs **JPS** followed by a
    **distance-map planner (DMP)** refinement to get a collision-free reference path.
 3. Runs **PathCover** from the robot's position along that path, capped at `horizon`
@@ -76,7 +77,10 @@ assumptions.
 polytope. That is what the receding-horizon planner drives toward, and it is what the node
 publishes in the `goal` field of `polytope_msgs/Polytopes`.
 
-## Parameters — [`config/global_planning.yaml`](config/global_planning.yaml)
+## Parameters
+
+The quadrotor uses [`config/global_planning_drone.yaml`](config/global_planning_drone.yaml); Jackal
+uses [`config/global_planning_jackal.yaml`](config/global_planning_jackal.yaml).
 
 | Parameter | Meaning |
 |---|---|
@@ -99,6 +103,9 @@ RISP's $\alpha$ is not exposed here; it defaults to `0.01` in
 `FilteredCloudTopic` and `VelodynePoseTopic` are legacy entries kept for the commented-out
 filtered-cloud publisher; neither affects planning.
 
+Jackal additionally uses `ObstacleZMin` / `ObstacleZMax` for its 3-D map slice, `VizHeight` for
+planar RViz markers, `JpsHeuristicWeight`, and the configurable `PolytopeTopic`.
+
 ## ROS interface — `corridor_planning_node`
 
 | Direction | Topic | Type |
@@ -112,6 +119,10 @@ filtered-cloud publisher; neither affects planning.
 | pub | `/benchmark/computation_time_ms` | `std_msgs/Float64` — PathCover time **in isolation** (conversion, grid, and search excluded) |
 | pub | `/benchmark/remaining_points` | `std_msgs/Int64MultiArray` — per-iteration $N_m$ decay for the first polytope |
 
+The Jackal build uses `/jackal/ground_truth` and `/jackal/polytopes`, accepts the same RViz goal
+topic, and serializes 2-D `A`, `seed`, and `goal` arrays. Its visualization is lifted to
+`VizHeight`; the wire-level message intentionally carries no dimension field.
+
 ## Launch
 
 [`launch/corridor_generation.launch`](launch/corridor_generation.launch) is the system-level
@@ -122,9 +133,19 @@ entry point — it brings up Gazebo and the world, spawns the quadrotor, and sta
 roslaunch corridor_planning corridor_generation.launch
 ```
 
+The planar Jackal stack is launched with:
+
+```sh
+roslaunch corridor_planning corridor_generation_jackal.launch
+```
+
+These executables are build-time variants of the same sources. Configure with
+`PATHCOVER_EXAMPLE=quadrotor` (3-D) or `PATHCOVER_EXAMPLE=jackal` (2-D); the root launcher scripts
+set this automatically.
+
 To fly a different world, point `world_name` in that launch file at it and update
 `MapLowerBound` / `MapUpperBound` / `VoxelResolution` in
-[`config/global_planning.yaml`](config/global_planning.yaml) to match. See the
+[`config/global_planning_drone.yaml`](config/global_planning_drone.yaml) to match. See the
 [quadrotor_sim README](../quadrotor_sim/README.md) for where world files live.
 
 ## Library usage
@@ -183,9 +204,11 @@ src/
   main.cpp                   node entry point
   SubscribeAndPublish.cpp    node implementation (pipeline above)
 launch/
-  corridor_generation.launch system-level launch: Gazebo, robot, mapper, planner, RViz
+  corridor_generation.launch        quadrotor system launch
+  corridor_generation_jackal.launch Jackal system launch
 config/
-  global_planning.yaml       parameters documented above
+  global_planning_drone.yaml  3-D quadrotor parameters
+  global_planning_jackal.yaml 2-D Jackal parameters
 ```
 
 ## Dependencies

@@ -48,7 +48,7 @@ namespace gcopter
         typedef std::vector<PolyhedronH> PolyhedraH;
 
     private:
-        minco::MINCO_S3NU minco;
+        minco::MINCO_S3NU<> minco;
         flatness::FlatnessMap flatmap;
 
         double rho;

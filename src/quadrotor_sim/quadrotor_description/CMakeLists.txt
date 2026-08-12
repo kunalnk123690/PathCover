@@ -1,35 +1,26 @@
 cmake_minimum_required(VERSION 3.16)
 project(quadrotor_description)
 
+set(PATHCOVER_EXAMPLE "quadrotor" CACHE STRING "PathCover example to build (quadrotor or jackal)")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_BUILD_TYPE Release)
 add_compile_options(-march=native -O3 -w)
 
-find_package(catkin REQUIRED COMPONENTS
-  geometry_msgs
-  nav_msgs
-  roscpp
-  sensor_msgs
-  gazebo_msgs
-  tf
-)
-
-
-catkin_package(CATKIN_DEPENDS 
-  geometry_msgs 
-  nav_msgs 
-  roscpp 
-  sensor_msgs 
-  gazebo_msgs
-  tf
-)
-
-include_directories(include ${catkin_INCLUDE_DIRS})
-
-file(GLOB SRC_FILE src/*.cpp)
-add_executable(quadrotor_ground_truth_node ${SRC_FILE})
-target_link_libraries(quadrotor_ground_truth_node ${catkin_LIBRARIES})
+if(PATHCOVER_EXAMPLE STREQUAL "quadrotor")
+  find_package(catkin REQUIRED COMPONENTS
+    geometry_msgs nav_msgs roscpp sensor_msgs gazebo_msgs tf
+  )
+  catkin_package(CATKIN_DEPENDS geometry_msgs nav_msgs roscpp sensor_msgs gazebo_msgs tf)
+  include_directories(include ${catkin_INCLUDE_DIRS})
+  file(GLOB SRC_FILE src/*.cpp)
+  add_executable(quadrotor_ground_truth_node ${SRC_FILE})
+  target_link_libraries(quadrotor_ground_truth_node ${catkin_LIBRARIES})
+else()
+  find_package(catkin REQUIRED)
+  catkin_package()
+endif()
 
 
 

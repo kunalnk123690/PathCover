@@ -1,7 +1,7 @@
 # This is a Dockerfile for ros:noetic-desktop
 FROM osrf/ros:noetic-desktop-full
 
-ARG USERNAME=quadrotor
+ARG USERNAME=PathCover
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
@@ -26,7 +26,13 @@ RUN pip install --upgrade pip
 RUN pip install --upgrade cmake casadi gpg
 
 # Source ROS Noetic in .bashrc and add aliases for catkin build system
-RUN echo "export PATH=$HOME/.local/bin:$PATH" >> /home/$USERNAME/.bashrc
+# Single-quoted so $HOME and $PATH are written literally and expand when .bashrc
+# is sourced. With double quotes they expand at build time instead -- as root,
+# and before the CUDA ENV below exists -- baking a fixed PATH into .bashrc that
+# overwrites the runtime one, dropping /usr/local/cuda/bin (so check_language(CUDA)
+# fails and nanovoxmap silently builds CPU-only) and pointing at /root/.local/bin
+# rather than this user's.
+RUN echo 'export PATH=$HOME/.local/bin:$PATH' >> /home/$USERNAME/.bashrc
 RUN echo "source /opt/ros/noetic/setup.bash" >> /home/$USERNAME/.bashrc
 RUN echo "alias SOURCE_WS='source devel/setup.bash'" >> /home/$USERNAME/.bashrc
 RUN echo "export DISABLE_ROS1_EOL_WARNINGS=1" >> /home/$USERNAME/.bashrc
@@ -37,7 +43,12 @@ RUN apt update && apt install -y \
     ros-noetic-gazebo-ros \
     ros-noetic-velodyne \
     ros-noetic-velodyne-simulator \
-    ros-noetic-hector-gazebo-plugins
+    ros-noetic-hector-gazebo-plugins \
+    ros-noetic-controller-manager \
+    ros-noetic-twist-mux \
+    ros-noetic-interactive-marker-twist-server \
+    ros-noetic-joint-state-controller \
+    ros-noetic-diff-drive-controller
 
 # --- Optional CUDA toolkit --------------------------------------------------
 # nanovoxmap builds its GPU raycast/ESDF kernels only when CMake finds a CUDA

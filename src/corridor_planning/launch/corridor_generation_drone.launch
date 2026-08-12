@@ -42,18 +42,18 @@
 
   <!-- Corridor Planning -->
   <node name="corridor_planning_node" pkg="corridor_planning" type="corridor_planning_node" output="screen">
-    <rosparam file="$(find corridor_planning)/config/global_planning.yaml" command="load" />
+    <rosparam file="$(find corridor_planning)/config/global_planning_drone.yaml" command="load" />
   </node>
 
 
   <!-- nanovoxmap -->
   <node name="nanovoxmap_node" pkg="nanovoxmap" type="nanovoxmap_node" output="screen">
-    <rosparam file="$(find nanovoxmap)/config/mapping.yaml"/>
+    <rosparam file="$(find nanovoxmap)/config/mapping_drone.yaml"/>
   </node>
 
   <!-- Trajectory Planner -->
   <node name="trajectory_server_node" pkg="trajectory_server" type="trajectory_server_node" output="screen">
-    <rosparam file="$(find trajectory_server)/config/gcopter_params.yaml" command="load" />
+    <rosparam file="$(find trajectory_server)/config/gcopter_params_drone.yaml" command="load" />
   </node>
 
   <!-- Record data to rosbag -->

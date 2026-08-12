@@ -112,7 +112,7 @@ To fly a different one:
 2. Point `world_name` in
    [`corridor_generation.launch`](../corridor_planning/launch/corridor_generation.launch) at it.
 3. Update `MapLowerBound` / `MapUpperBound` / `VoxelResolution` in
-   [`global_planning.yaml`](../corridor_planning/config/global_planning.yaml) — the search grid
+   [`global_planning_drone.yaml`](../corridor_planning/config/global_planning_drone.yaml) — the search grid
    and the workspace bounds appended to every polytope are per-world.
 
 `nanovoxmap` needs no world-specific change: its map is an unbounded sparse block hash.
@@ -153,7 +153,7 @@ and `velodyne_simulator` for the VLP-16 plugin.
 
 ## Acknowledgements
 
-The world and the VLP-16 meshes are third-party; everything else here — the URDF/xacro
+The world, VLP-16 meshes, and D435 mesh are third-party; everything else here — the URDF/xacro
 descriptions, the controller plugin, the ground-truth node, and the RViz configuration — is
 original work under this repository's licence. Provenance and licences are listed in the
 [top-level README](../../README.md#acknowledgements).

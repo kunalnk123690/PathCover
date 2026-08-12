@@ -37,13 +37,44 @@ using namespace std;
 using namespace chrono;
 using namespace JPS;
 
+#ifndef PATHCOVER_DIM
+#define PATHCOVER_DIM 3
+#endif
+
+using VectorDim = Eigen::Matrix<double, PATHCOVER_DIM, 1>;
+using GridIndex = Eigen::Matrix<int, PATHCOVER_DIM, 1>;
+using ConstraintMatrix = Eigen::Matrix<double, Eigen::Dynamic, PATHCOVER_DIM>;
+using BoundaryMatrix = Eigen::Matrix<double, 2 * PATHCOVER_DIM, PATHCOVER_DIM>;
+using BoundaryVector = Eigen::Matrix<double, 2 * PATHCOVER_DIM, 1>;
+
+#if PATHCOVER_DIM == 2
+using JpsVector = Vec2f;
+using MapUtilType = OccMapUtil;
+using JpsPlanner = JPSPlanner2D;
+using DmPlannerType = DMPlanner2D;
+#elif PATHCOVER_DIM == 3
+using JpsVector = Vec3f;
+using MapUtilType = VoxelMapUtil;
+using JpsPlanner = JPSPlanner3D;
+using DmPlannerType = DMPlanner3D;
+#else
+#error "corridor_planning supports only PATHCOVER_DIM=2 or 3"
+#endif
+
+// Shared corridor node. Aerial builds operate directly in 3D; planar builds
+// slice the mapped cloud by height and project it to XY before planning.
 struct Config {
     std::string mapTopic;
     std::string GroundTruthTopic;
     std::string FilteredCloudTopic;
+    std::string PolytopeTopic;
     double DeflationFactor;
     double VoxelResolution;
     double filterRadius;
+    double ObstacleZMin;
+    double ObstacleZMax;
+    double VizHeight;
+    double JpsHeuristicWeight;
     int horizon;
     std::vector<double> MapLowerBound;
     std::vector<double> MapUpperBound;
@@ -67,6 +98,17 @@ struct Config {
         nh_priv.getParam("GroundTruthTopic", GroundTruthTopic);
         nh_priv.getParam("FilteredCloudTopic", FilteredCloudTopic);
         nh_priv.getParam("horizon", horizon);
+
+        PolytopeTopic = PATHCOVER_DIM == 2 ? "/jackal/polytopes" : "/quadrotor/polytopes";
+        nh_priv.getParam("PolytopeTopic", PolytopeTopic);
+        ObstacleZMin = 0.05;
+        nh_priv.getParam("ObstacleZMin", ObstacleZMin);
+        ObstacleZMax = 0.8;
+        nh_priv.getParam("ObstacleZMax", ObstacleZMax);
+        VizHeight = 0.15;
+        nh_priv.getParam("VizHeight", VizHeight);
+        JpsHeuristicWeight = VoxelResolution;
+        nh_priv.getParam("JpsHeuristicWeight", JpsHeuristicWeight);
     }
 };
 
@@ -85,16 +127,16 @@ class SubscribeAndPublish {
         void plannerLoop();
         void processCloud(const sensor_msgs::PointCloud2::ConstPtr &msg);
 
-        inline bool PlanCorridor(std::vector<Eigen::Vector3d> &PointCloud, 
-                                 Eigen::Vector3d &start,
-                                 Eigen::Vector3d &goal);
-        inline void VisualizePolyhedra(std::vector<Eigen::Vector3d> &PointCloud, 
-                                       std::vector<Eigen::Vector3d> &path,
-                                       const Eigen::Vector3d &start,
-                                       const Eigen::Vector3d &goal);
-        inline void convertConstraints(Eigen::Matrix<double, -1, 3> &A, 
-                                       Eigen::VectorXd &b, 
-                                       Eigen::Vector3d& seed, 
+        inline bool PlanCorridor(std::vector<VectorDim> &PointCloud,
+                                 VectorDim &start,
+                                 VectorDim &goal);
+        inline void VisualizePolyhedra(std::vector<VectorDim> &PointCloud,
+                                       std::vector<VectorDim> &path,
+                                       const VectorDim &start,
+                                       const VectorDim &goal);
+        inline void convertConstraints(ConstraintMatrix &A,
+                                       Eigen::VectorXd &b,
+                                       VectorDim& seed,
                                        polytope_msgs::Polytope &msg);
 
 
@@ -109,46 +151,46 @@ class SubscribeAndPublish {
         ros::Publisher polytopePub_;
         ros::Publisher remainingPtsPub_;
         ros::Publisher ComputationTimePub_;
-        std::vector<Eigen::Vector3d> inputCloud_;
+        std::vector<VectorDim> inputCloud_;
 
         std::vector<signed char> grid_;
-        Eigen::Vector3i grid_size_;
+        GridIndex grid_size_;
         std::vector<int> occupied_cells_;   // dirty-cell list for fast grid reset
-        Vec3f origin_;
-        Vec3f max_bounds_;
+        JpsVector origin_;
+        JpsVector max_bounds_;
         double resolution_;
         double filter_radius_;
-        std::vector<Eigen::Vector3d> PointCloud_;
-        std::vector<Eigen::Vector3d> startGoal_;
+        double obstacle_z_min_;
+        double obstacle_z_max_;
+        double jps_heuristic_weight_;
+        std::vector<VectorDim> PointCloud_;
+        std::vector<VectorDim> startGoal_;
 
-        std::vector<Eigen::Vector3d> route_;
-        std::vector<Eigen::Vector3d> path_;
-      
+        std::vector<VectorDim> route_;
+        std::vector<VectorDim> path_;
+
 
         /****** Create JPS Map ******/
-        std::shared_ptr<VoxelMapUtil> map_util = std::make_shared<VoxelMapUtil>();
+        std::shared_ptr<MapUtilType> map_util = std::make_shared<MapUtilType>();
 
         /****** Declare a planner pointer ******/
-        std::unique_ptr<JPSPlanner3D> planner_ptr = std::make_unique<JPSPlanner3D>(false); 
-        std::unique_ptr<DMPlanner3D> dmp_ptr = std::make_unique<DMPlanner3D>(false);
-        std::vector<Eigen::Vector3d> filteredCloud_;
+        std::unique_ptr<JpsPlanner> planner_ptr = std::make_unique<JpsPlanner>(false);
+        std::unique_ptr<DmPlannerType> dmp_ptr = std::make_unique<DmPlannerType>(false);
+        std::vector<VectorDim> filteredCloud_;
         bool isFirstRun_;
 
-        // Eigen::Quaterniond q_;
-        // Eigen::Vector3d pose_;
-        
-        std::unique_ptr<Visualizer> visualizer_ = std::make_unique<Visualizer>(n_);
+        std::unique_ptr<Visualizer> visualizer_;
 
-        Eigen::Matrix<double, 6, 3> A_bound_;
-        Eigen::Matrix<double, 6, 1> b_bound_;
-        std::vector<Eigen::Matrix<double, -1, 3>> A_;
+        BoundaryMatrix A_bound_;
+        BoundaryVector b_bound_;
+        std::vector<ConstraintMatrix> A_;
         std::vector<Eigen::VectorXd> b_;
-        std::vector<Eigen::Vector3d> seeds_;
-        std::unique_ptr<PolyhedraPublisher<double, 3>> polyhedraPublisher_;
+        std::vector<VectorDim> seeds_;
+        std::unique_ptr<PolyhedraPublisher<double, PATHCOVER_DIM>> polyhedraPublisher_;
         double deflation_factor_;
         int horizon_;
-        Eigen::Vector3d start_;
-        Eigen::Vector3d goal_;
+        VectorDim start_;
+        VectorDim goal_;
 
         std::mutex start_goal_mutex_;
 

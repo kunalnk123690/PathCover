@@ -17,13 +17,18 @@ class PolyhedraPublisher {
     private:
         ros::Publisher meshPub_;
         ros::Publisher edgePub_;
+        // World z the polytopes are drawn at. Only used when dim == 2, where
+        // the polytope itself carries no height.
+        double vizHeight_;
 
     public:
         visualization_msgs::Marker meshMarker;
         visualization_msgs::Marker edgeMarker;
 
     public:
-        PolyhedraPublisher(ros::NodeHandle &nh, std::string meshTopic, std::string edgeTopic) {
+        PolyhedraPublisher(ros::NodeHandle &nh, std::string meshTopic, std::string edgeTopic,
+                           double vizHeight = 0.0)
+            : vizHeight_(vizHeight) {
             // Constructor
             meshPub_ = nh.advertise<visualization_msgs::Marker>(meshTopic, 1000);
             edgePub_ = nh.advertise<visualization_msgs::Marker>(edgeTopic, 1000);
@@ -63,6 +68,9 @@ class PolyhedraPublisher {
             Geometry::constructMesh<T, dim>(A, b, seeds, mesh, horizon);
             meshMarker.points.clear();
             geometry_msgs::Point mesh_point;
+            // For dim == 2 the Eigen::Map below only writes x and y, so z has
+            // to be set here; for dim == 3 it is overwritten by the map.
+            mesh_point.z = vizHeight_;
             for (int i = 0; i < mesh.size(); i++) {
                 for(int j = 0; j < mesh[i].size(); j++) {
                     Eigen::Map<Eigen::Matrix<double, dim, 1>>(&mesh_point.x) = mesh[i][j].template cast<double>();
@@ -72,6 +80,7 @@ class PolyhedraPublisher {
 
             edgeMarker.points.clear();
             geometry_msgs::Point edge_point;
+            edge_point.z = vizHeight_;
             for (int i = 0; i < mesh.size(); i++) {
                 for (int j = 0; j < mesh[i].size(); j++) {
                     Eigen::Map<Eigen::Matrix<double, dim, 1>>(&edge_point.x) = mesh[i][j].template cast<double>();

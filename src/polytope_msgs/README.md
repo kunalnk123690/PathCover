@@ -23,8 +23,9 @@ One convex polytope as the half-space set $\{y : Ay \le b\}$.
 | `b` | The offset vector, one entry per row of `A` |
 | `seed` | The `dim`-vector the polytope was grown around. Guaranteed strictly interior: `A * seed < b` elementwise |
 
-`dim` is 3 in this stack, and is not carried in the message — a consumer knows the dimension of
-the world it is planning in. Rows are **not** normalized: `||A.row(i)||` is arbitrary, so any
+`dim` is selected at build time and is not carried in the message: it is 3 for the quadrotor and
+2 for Jackal. A publisher and consumer must therefore be built for the same example. Rows are
+**not** normalized: `||A.row(i)||` is arbitrary, so any
 metric shift of a half-space must scale by the row norm (shrinking constraint `i` inward by
 `m` metres means `b[i] -= m * ||A.row(i)||`).
 
@@ -50,10 +51,13 @@ A full corridor.
 
 A publisher may leave `goal` empty (`corridor_planning` fills it only once the corridor has a
 local target to report). Consumers should treat a message with an empty `polytope` array, or with
-fewer than 3 `goal` entries, as "no valid target yet" and hold position — which is what
+fewer than `dim` `goal` entries, as "no valid target yet" and hold position — which is what
 `trajectory_server` does.
 
 ## Consuming a corridor
+
+This example shows the quadrotor's 3-D layout; use column count 2 and corresponding Eigen types
+for a Jackal build.
 
 ```cpp
 #include <polytope_msgs/Polytopes.h>
@@ -73,7 +77,7 @@ void callback(const polytope_msgs::Polytopes::ConstPtr &msg) {
 Producing one is the mirror image — see `convertConstraints()` in
 [`SubscribeAndPublish.cpp`](../corridor_planning/src/SubscribeAndPublish.cpp), and
 `polytopesCallback()` in
-[`trajectory_server_node.cpp`](../trajectory_server/src/trajectory_server_node.cpp) for a
+[`trajectory_server.cpp`](../trajectory_server/src/trajectory_server.cpp) for a
 consumer that converts to the $n^\top y + d \le 0$ convention GCOPTER expects.
 
 ## Package layout

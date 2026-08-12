@@ -1,4 +1,4 @@
-# --- Topics (identical to trajectory_server/config/optim_params.yaml) ---
+# --- Quadrotor topics ---
 OdometryTopic:            "/quadrotor/ground_truth"
 TrajectoryTopic:           "/quadrotor/trajectory"
 PolyhedraTopic:             "/quadrotor/polytopes"

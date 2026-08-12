@@ -35,7 +35,12 @@ DEV_ARGS=()
 # INSTALL_CUDA=true forces the toolkit into the image even on a CPU-only build
 # host (useful when the image is built here but run elsewhere); false skips the
 # download.
-docker build -t ros-noetic-quadrotor \
+# --network=host builds on the host's network stack instead of the default
+# bridge. On a VPN (e.g. Cisco AnyConnect, whose cscotun0 runs a 1390-byte MTU)
+# the 1500-byte bridge black-holes large packets: TCP connects fine, then apt's
+# .deb downloads stall and time out mid-transfer. Sharing the host stack
+# inherits the tunnel's MTU, so downloads complete. Harmless off-VPN.
+docker build --network=host -t ros-noetic-pathcover \
   --build-arg INSTALL_CUDA="$INSTALL_CUDA" \
   -f .devcontainer/Dockerfile .
 
@@ -46,8 +51,8 @@ docker run -it --rm \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   "${DEV_ARGS[@]}" \
-  -v $(pwd):/home/quadrotor/quadrotor_ws \
+  -v $(pwd):/home/PathCover/PathCover_ws \
   "${GPU_ARGS[@]}" \
   --privileged \
-  ros-noetic-quadrotor \
+  ros-noetic-pathcover \
   bash

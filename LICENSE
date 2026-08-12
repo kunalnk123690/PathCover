@@ -45,25 +45,38 @@ license above.
   src/trajectory_server/include/gcopter/
       GCOPTER / MINCO. MIT License.
       Copyright (c) 2021 Zhepei Wang and Fei Gao.
-      See src/trajectory_server/LICENSE
+      See src/trajectory_server/LICENSE.GCOPTER
+
+  src/jackal_description/
+      Jackal description, simulation configuration, and worlds, except for
+      the sensor meshes separately listed below.
+      BSD 3-Clause License.
+      Copyright (c) 2021 Clearpath Robotics Inc.
+      See src/jackal_description/LICENSE
 
   src/quadrotor_sim/quadrotor_description/worlds/floorplan1/floorplan1_static.world
-  src/quadrotor_sim/quadrotor_description/models/
-  src/quadrotor_sim/quadrotor_description/meshes/quadcopter.dae
-      Gazebo environment assets and the airframe mesh only -- the simulator
+      Gazebo environment asset only -- the simulator
       itself (descriptions, plugins, controller, nodes) is original work
       under the BSD 3-Clause license above. From uav_simulator
       (https://github.com/Zhefan-Xu/uav_simulator,
       commit 80d7a4a1b674abba3c9234ff29c0db7ddf99e63c). MIT License.
       Copyright (c) 2023 Zhefan Xu.
-      See src/quadrotor_sim/quadrotor_description/LICENSE.uav_simulator
+      See src/quadrotor_sim/quadrotor_description/worlds/floorplan1/LICENSE.uav_simulator
 
   src/quadrotor_sim/quadrotor_description/meshes/VLP16_base_1.dae
   src/quadrotor_sim/quadrotor_description/meshes/VLP16_base_2.dae
   src/quadrotor_sim/quadrotor_description/meshes/VLP16_scan.dae
       Velodyne VLP-16 meshes, from the velodyne_simulator package
       (velodyne_description/meshes). BSD License.
-      Copyright (c) Dataspeed Inc.
+      Copyright (c) 2015-2018, Dataspeed Inc.
+      See LICENSE.velodyne_simulator
+
+  src/quadrotor_sim/quadrotor_description/meshes/d435.dae
+  src/jackal_description/meshes/d435.dae
+      Intel RealSense D435 mesh, byte-identical to the copy distributed by
+      realsense2_description. Apache License 2.0.
+      Copyright Intel Corporation and its contributors.
+      See LICENSE.realsense2_description
 
   src/third_party/jps_lib/
       JPS3D and the distance-map planner. BSD 3-Clause License.

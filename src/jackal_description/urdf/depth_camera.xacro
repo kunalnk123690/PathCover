@@ -1,0 +1,104 @@
+<?xml version="1.0"?>
+<robot>
+
+    <joint type="fixed" name="realsense_bracket_joint">
+        <origin xyz="0.18 0 0" rpy="0 0 0" />
+        <parent link="mid_mount" />
+        <child  link="realsense_bracket_link" />
+    </joint>
+
+    <link name="realsense_bracket_link">
+        <visual>
+            <origin xyz="0.010 -0.0325 0" rpy="0 0 ${pi/2}" />
+            <geometry>
+                <mesh filename="package://jackal_description/meshes/mounting_bracket.stl" scale="0.001 0.001 0.001"/>
+            </geometry>
+            <material name="dark_grey" />
+        </visual>
+        <collision>
+            <origin xyz="0 0 0.0145" rpy="0 0 0" />
+            <geometry><box size="0.020 0.065 0.029"/></geometry>
+        </collision>
+        <inertial>
+            <mass value="1e-6" />
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6" />
+        </inertial>
+    </link>
+
+    <!-- Camera body at the plate hole-centre, facing robot +X -->
+    <joint type="fixed" name="front_realsense_chassis_joint">
+        <origin xyz="-0.007 0 0.022" rpy="0 0 0" />
+        <parent link="realsense_bracket_link" />
+        <child  link="front_realsense_chassis" />
+    </joint>
+    <link name="front_realsense_chassis">
+        <visual>
+            <origin xyz="0.025 0 0" rpy="${-pi/2} 0 ${-pi/2}" />
+            <geometry>
+                <mesh filename="package://jackal_description/meshes/d435.dae"/>
+            </geometry>
+        </visual>
+    </link>
+
+    <!-- optical body frame (front glass); Gazebo sensor lives here -->
+    <joint type="fixed" name="front_realsense_joint">
+        <origin xyz="0.025 0 0" rpy="0 0 0" />
+        <parent link="front_realsense_chassis" />
+        <child  link="front_realsense_lens" />
+    </joint>
+    <link name="front_realsense_lens" />
+
+    <!-- optical frame, REP-103 (z forward, x right, y down) -->
+    <joint name="front_realsense_optical_link_joint" type="fixed">
+        <parent link="front_realsense_lens" />
+        <child  link="front_realsense_optical_link" />
+        <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}" />
+    </joint>
+    <link name="front_realsense_optical_link" />
+
+    <!-- Gazebo materials (drop the chassis one if the .dae carries its own colours) -->
+    <gazebo reference="realsense_bracket_link"><material>Gazebo/DarkGrey</material></gazebo>
+
+    <!-- Depth camera -->
+    <gazebo reference="front_realsense_lens">
+        <sensor type="depth" name="front_realsense_depth">
+            <always_on>true</always_on>
+            <update_rate>30</update_rate>
+            <camera>
+                <horizontal_fov>1.5184351666666667</horizontal_fov>
+                <image>
+                    <width>640</width>
+                    <height>480</height>
+                    <format>R8G8B8</format>
+                </image>
+                <clip><near>0.1</near><far>50.0</far></clip>
+            </camera>
+            <plugin name="realsense_controller" filename="libgazebo_ros_openni_kinect.so">
+                <baseline>0.05</baseline>
+                <alwaysOn>true</alwaysOn>
+                <updateRate>30</updateRate>
+                <cameraName>jackal/realsense</cameraName>
+                <imageTopicName>color/image_raw</imageTopicName>
+                <cameraInfoTopicName>color/camera_info</cameraInfoTopicName>
+                <depthImageTopicName>depth/image_rect_raw</depthImageTopicName>
+                <depthImageInfoTopicName>depth/camera_info</depthImageInfoTopicName>
+                <pointCloudTopicName>depth/color/points</pointCloudTopicName>
+                <frameName>front_realsense_optical_link</frameName>
+                <pointCloudCutoff>0.105</pointCloudCutoff>
+                <pointCloudCutoffMax>8.0</pointCloudCutoffMax>
+                <distortionK1>0</distortionK1>
+                <distortionK2>0</distortionK2>
+                <distortionK3>0</distortionK3>
+                <distortionT1>0</distortionT1>
+                <distortionT2>0</distortionT2>
+                <CxPrime>0</CxPrime>
+                <Cx>0</Cx>
+                <Cy>0</Cy>
+                <focalLength>0</focalLength>
+                <hackBaseline>0</hackBaseline>
+            </plugin>
+        </sensor>
+    </gazebo>
+
+</robot>

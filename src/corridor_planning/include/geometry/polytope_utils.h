@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <cmath>
 #include <Eigen/Dense>
 #include <stdexcept>
 
@@ -97,35 +98,57 @@ namespace Geometry {
 
         int num_points = Points.size();
 
-        // Map the points vector into an Eigen matrix
-        Eigen::Map<const Eigen::Matrix<T, dim, -1>> point_matrix(
-            reinterpret_cast<const T *>(Points.data()), dim, num_points);
-        Eigen::Matrix<double, -1, dim, Eigen::RowMajor> points_transpose = point_matrix.transpose().template cast<double>();
-
-        // Construct Qhull object based on dimension
-        orgQhull::Qhull qhull;
         if constexpr (dim == 2) {
-            qhull.runQhull("", dim, num_points, points_transpose.data(), "d Qt Qz");
+            // A planar polytope's vertex set is already a convex polygon, so a
+            // Delaunay triangulation is overkill (and qhull's 'd' mode needs
+            // upper-facet filtering to be used correctly). Sorting the
+            // vertices by angle about their centroid recovers the polygon
+            // boundary exactly, and a triangle fan from the first vertex
+            // tiles a convex polygon with no degenerate triangles.
+            if (num_points < 3) {
+                return;
+            }
+
+            Eigen::Matrix<T, 2, 1> centroid = Eigen::Matrix<T, 2, 1>::Zero();
+            for (const auto &p : Points) {
+                centroid += p;
+            }
+            centroid /= static_cast<T>(num_points);
+
+            std::vector<Eigen::Matrix<T, 2, 1>> ordered(Points);
+            std::sort(ordered.begin(), ordered.end(),
+                      [&centroid](const Eigen::Matrix<T, 2, 1> &a,
+                                  const Eigen::Matrix<T, 2, 1> &b) {
+                          return std::atan2(a(1) - centroid(1), a(0) - centroid(0)) <
+                                 std::atan2(b(1) - centroid(1), b(0) - centroid(0));
+                      });
+
+            for (int i = 1; i + 1 < num_points; ++i) {
+                mesh.push_back({ordered[0], ordered[i], ordered[i + 1]});
+            }
         }
         else {
-            qhull.runQhull("", dim, num_points, points_transpose.data(), "Qt");
-        }
+            // Map the points vector into an Eigen matrix
+            Eigen::Map<const Eigen::Matrix<T, dim, -1>> point_matrix(
+                reinterpret_cast<const T *>(Points.data()), dim, num_points);
+            Eigen::Matrix<double, -1, dim, Eigen::RowMajor> points_transpose = point_matrix.transpose().template cast<double>();
 
-        // Process the facets of the convex hull
-        for (const auto &facet : qhull.facetList()) {
-            if (facet.isGood()) {
-                std::vector<Eigen::Matrix<T, dim, 1>> simplex;
-                std::transform(facet.vertices().begin(), facet.vertices().end(), std::back_inserter(simplex),
-                               [](const auto &vertex) {
-                                   const auto &point = vertex.point();
-                                   if constexpr (dim == 2) {
-                                       return Eigen::Matrix<T, 2, 1>(static_cast<T>(point[0]), static_cast<T>(point[1]));
-                                   }
-                                   else if constexpr (dim == 3) {
-                                       return Eigen::Matrix<T, 3, 1>(static_cast<T>(point[0]), static_cast<T>(point[1]), static_cast<T>(point[2]));
-                                   }
-                               });
-                mesh.push_back(simplex);
+            orgQhull::Qhull qhull;
+            qhull.runQhull("", dim, num_points, points_transpose.data(), "Qt");
+
+            // Process the facets of the convex hull
+            for (const auto &facet : qhull.facetList()) {
+                if (facet.isGood()) {
+                    std::vector<Eigen::Matrix<T, dim, 1>> simplex;
+                    std::transform(facet.vertices().begin(), facet.vertices().end(), std::back_inserter(simplex),
+                                   [](const auto &vertex) {
+                                       const auto &point = vertex.point();
+                                       return Eigen::Matrix<T, dim, 1>(static_cast<T>(point[0]),
+                                                                       static_cast<T>(point[1]),
+                                                                       static_cast<T>(point[2]));
+                                   });
+                    mesh.push_back(simplex);
+                }
             }
         }
     }

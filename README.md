@@ -1,11 +1,14 @@
 # PathCover
 
-<video src="./media/simulation_drone.mp4" autoplay loop muted playsinline width="100%">
-</video>
+<!-- <img src="media/simulation_drone.webp" width="100%" alt="Quadrotor running PathCover in Gazebo">
 
-<video src="./media/simulation_jackal.mp4" autoplay loop muted playsinline width="100%">
-</video>
+<img src="media/simulation_jackal.webp" width="100%" alt="Jackal running PathCover in Gazebo">
 
+<sub>Looped previews: [quadrotor](media/simulation_drone.gif) · [Jackal](media/simulation_jackal.gif)</sub> -->
+<p align="center">
+  <img src="media/simulation_drone.gif"/>
+  <img src="media/simulation_jackal.gif"/>
+</p>
 
 
 **PathCover** is developed in order to enable fast convex decomposition along a path, at sensor frequency, directly on point clouds. At its core is **RISP** (Randomized Iterative Space Partitioning), a fast geometric operation that replaces the optimization loop used by state of the art conventional convex decomposition methods. Around it, this repository ships everything needed to run the algorithm in closed loop: a sparse voxel mapper, a global path search, a corridor-constrained trajectory optimizer, and Gazebo examples for a quadrotor and a differential-drive wheeled robot Jackal.
@@ -72,7 +75,7 @@ The first build takes a few minutes; later runs of the same script only rebuild 
 
 ### Step 3 — Send it a goal
 
-Gazebo and RViz come up with the world, the robot, and the mapper already running. Pick a destination with RViz's **2D Nav Goal** tool (published on `/move_base_simple/goal`) and the robot plans and drives to it: the corridor is drawn in blue, the reference path in red, and the optimized trajectory in green, all regenerated from scratch on every scan. A sample run is in the [video](media/simulation_drone.mp4) at the top of this page.
+Gazebo and RViz come up with the world, the robot, and the mapper already running. Pick a destination with RViz's **2D Nav Goal** tool (published on `/move_base_simple/goal`) and the robot plans and drives to it: the corridor is drawn in blue, the reference path in red, and the optimized trajectory in green, all regenerated from scratch on every scan. A sample run is in the [GIF](media/simulation_drone.gif) at the top of this page.
 
 ### Other worlds
 

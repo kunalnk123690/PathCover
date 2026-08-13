@@ -32,6 +32,8 @@ DEV_ARGS=()
 [ -d /dev/dri ]   && DEV_ARGS+=(-v /dev/dri:/dev/dri)
 [ -d /dev/input ] && DEV_ARGS+=(-v /dev/input:/dev/input)
 
+xhost +local:
+
 # INSTALL_CUDA=true forces the toolkit into the image even on a CPU-only build
 # host (useful when the image is built here but run elsewhere); false skips the
 # download.

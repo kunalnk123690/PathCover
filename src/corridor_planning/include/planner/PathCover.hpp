@@ -214,7 +214,14 @@ inline void pathCover(const std::vector<Eigen::Matrix<T, Dim, 1>> &obstacle_pts,
     all_pts_remaining.push_back(pts_remaining);
 
     int i = 1;
-    while((i < path.size() || ((A_ * path.back()).array() > b_.array()).all())) {
+    // A point is OUTSIDE a polytope iff ANY constraint is violated (the De
+    // Morgan's-law negation of "inside = ALL constraints satisfied", checked
+    // below at line ~218 and consistently used by computePolyhedraIntersection
+    // callers). Using .all() here required every single face to be violated
+    // simultaneously to be considered "still outside", which is true only in
+    // rare corner cases -- so the loop was stopping (and the corridor chain
+    // truncating) far short of actually reaching path.back() in the common case.
+    while((i < path.size() || ((A_ * path.back()).array() > b_.array()).any())) {
         if (((A_ * path[i]).array() <= b_.array()).all()) {
             intersection = path[i]; // The point is already inside the polyhedron defined by previous constraints
             i++;
@@ -235,11 +242,17 @@ inline void pathCover(const std::vector<Eigen::Matrix<T, Dim, 1>> &obstacle_pts,
         }
     }   
 
-    if (((A_ * path.back()).array() > b_.array()).all()) {
-        seed.push_back(path.back());
+    if (((A_ * path.back()).array() > b_.array()).any()) {
+        // path.back() is still NOT contained in the final corridor (the chain
+        // was cut short by max_horizon before actually reaching it) -- publish
+        // the last reachable boundary point as the goal, not the unreachable
+        // true destination, so downstream consumers (GCOPTER) get a terminal
+        // condition that's actually inside the corridor they were handed.
+        seed.push_back(intersection);
     }
     else {
-        seed.push_back(intersection);
+        // The final corridor genuinely contains path.back(); safe to use it.
+        seed.push_back(path.back());
     }
 }
 

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.22)
 project(qhull_lib)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -6,37 +6,46 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_BUILD_TYPE Release)
 add_compile_options(-march=native -O3 -w)
 
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
+# Find ament packages
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+
+# Include directories
+include_directories(
+  include
 )
 
-
-catkin_package(
-  INCLUDE_DIRS include
-  LIBRARIES ${PROJECT_NAME}
-  CATKIN_DEPENDS roscpp
-)
-
-include_directories( include
-  ${catkin_INCLUDE_DIRS}
-)
-
+# Collect source files
 file(GLOB LIB_FILES src/libqhull_r/*.c src/libqhullcpp/*.cpp)
-add_library(${PROJECT_NAME} ${LIB_FILES})
 
-target_link_libraries(${PROJECT_NAME} 
-  ${catkin_LIBRARIES} 
-  cdd
+# Create the library
+add_library(${PROJECT_NAME} ${LIB_FILES})
+ament_target_dependencies(${PROJECT_NAME} rclcpp)
+
+# Export include directories
+target_include_directories(${PROJECT_NAME} PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
 )
 
+# Install the library
 install(
   TARGETS ${PROJECT_NAME}
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
+# Install headers
 install(
   DIRECTORY include/
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  DESTINATION include/
 )
+
+# Export package
+ament_export_targets(export_${PROJECT_NAME})
+ament_export_include_directories(include)
+ament_export_dependencies(rclcpp)
+
+ament_package()

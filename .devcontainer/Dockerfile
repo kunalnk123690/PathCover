@@ -1,5 +1,5 @@
-# This is a Dockerfile for ros:noetic-desktop
-FROM osrf/ros:noetic-desktop-full
+# ROS 2 Jazzy desktop (Ubuntu 24.04) with Gazebo Harmonic for PathCover_ros2
+FROM osrf/ros:jazzy-desktop
 
 ARG USERNAME=PathCover
 ARG USER_UID=1000
@@ -21,34 +21,34 @@ RUN groupadd --gid $USER_GID $USERNAME \
 # Update and install common packages
 RUN apt update && apt upgrade -y
 RUN apt install -y bash bash-completion
-RUN apt install -y build-essential git wget libeigen3-dev python3-pip libcdd-dev
-RUN pip install --upgrade pip
-RUN pip install --upgrade cmake casadi gpg
+RUN apt install -y build-essential git wget libeigen3-dev libcdd-dev python3-pip
 
-# Source ROS Noetic in .bashrc and add aliases for catkin build system
+# Source ROS 2 Jazzy in .bashrc and add aliases for the colcon build system
 # Single-quoted so $HOME and $PATH are written literally and expand when .bashrc
-# is sourced. With double quotes they expand at build time instead -- as root,
-# and before the CUDA ENV below exists -- baking a fixed PATH into .bashrc that
-# overwrites the runtime one, dropping /usr/local/cuda/bin (so check_language(CUDA)
-# fails and nanovoxmap silently builds CPU-only) and pointing at /root/.local/bin
-# rather than this user's.
+# is sourced.
 RUN echo 'export PATH=$HOME/.local/bin:$PATH' >> /home/$USERNAME/.bashrc
-RUN echo "source /opt/ros/noetic/setup.bash" >> /home/$USERNAME/.bashrc
-RUN echo "alias SOURCE_WS='source devel/setup.bash'" >> /home/$USERNAME/.bashrc
-RUN echo "export DISABLE_ROS1_EOL_WARNINGS=1" >> /home/$USERNAME/.bashrc
+RUN echo "source /opt/ros/jazzy/setup.bash" >> /home/$USERNAME/.bashrc
+RUN echo "alias SOURCE_WS='source install/setup.bash'" >> /home/$USERNAME/.bashrc
 
-# Install ROS Noetic packages
+# Install ROS 2 Jazzy packages needed by the workspace
+#   - ros_gz_sim / ros_gz_bridge: Gazebo Harmonic <-> ROS 2 bridge used by the
+#     launch files (gz_sim.launch.py, parameter_bridge, create)
+#   - gz-sim8 / gz-plugin2 / gz-cmake3 vendor packages: quadrotor_gazebo_plugin
+#     builds against these (gz_find_package, gz-sim8::gz-sim8). Jazzy ships the
+#     Gazebo libraries as ament "vendor" packages under /opt/ros/jazzy/opt/ --
+#     there is no libgz-sim8-dev in the repos -- and their environment hooks
+#     extend CMAKE_PREFIX_PATH once /opt/ros/jazzy/setup.bash is sourced.
+#   - rosidl_default_generators: polytope_msgs / quadrotor_msgs message build
+#   - xacro: used by the launch files via FindExecutable to expand the URDF
 RUN apt update && apt install -y \
-    ros-noetic-message-filters \
-    ros-noetic-gazebo-ros \
-    ros-noetic-velodyne \
-    ros-noetic-velodyne-simulator \
-    ros-noetic-hector-gazebo-plugins \
-    ros-noetic-controller-manager \
-    ros-noetic-twist-mux \
-    ros-noetic-interactive-marker-twist-server \
-    ros-noetic-joint-state-controller \
-    ros-noetic-diff-drive-controller
+    ros-jazzy-ros-gz-sim \
+    ros-jazzy-ros-gz-bridge \
+    ros-jazzy-message-filters \
+    ros-jazzy-rosidl-default-generators \
+    ros-jazzy-gz-sim-vendor \
+    ros-jazzy-gz-plugin-vendor \
+    ros-jazzy-gz-cmake-vendor \
+    ros-jazzy-xacro
 
 # --- Optional CUDA toolkit --------------------------------------------------
 # nanovoxmap builds its GPU raycast/ESDF kernels only when CMake finds a CUDA
@@ -72,7 +72,7 @@ RUN if [ "$INSTALL_CUDA" = "true" ]; then \
       esac ; \
       if [ -n "$CUDA_REPO_ARCH" ] \
          && wget -q -O /tmp/cuda-keyring.deb \
-              "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/${CUDA_REPO_ARCH}/cuda-keyring_1.1-1_all.deb" \
+              "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/${CUDA_REPO_ARCH}/cuda-keyring_1.1-1_all.deb" \
          && dpkg -i /tmp/cuda-keyring.deb \
          && apt update \
          && apt install -y --no-install-recommends \
@@ -89,7 +89,7 @@ RUN if [ "$INSTALL_CUDA" = "true" ]; then \
       echo "INSTALL_CUDA=false -- skipping CUDA toolkit, nanovoxmap builds CPU-only" ; \
     fi
 
-# nvcc on PATH so catkin_make's check_language(CUDA) finds it. Harmless when the
+# nvcc on PATH so colcon's check_language(CUDA) finds it. Harmless when the
 # toolkit was skipped: the paths simply do not exist and the CPU path is used.
 ENV CUDA_HOME=/usr/local/cuda
 ENV PATH=/usr/local/cuda/bin:$PATH

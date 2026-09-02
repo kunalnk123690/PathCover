@@ -1,32 +1,24 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>trajectory_server</name>
   <version>0.0.0</version>
   <description>The trajectory_server package</description>
   <maintainer email="kunalnk@udel.edu">kunal</maintainer>
-  <license>BSD-3-Clause</license>
-  <license>MIT</license>
-  <buildtool_depend>catkin</buildtool_depend>
-  <build_depend>geometry_msgs</build_depend>
-  <build_depend>nav_msgs</build_depend>
-  <build_depend>polytope_msgs</build_depend>
-  <build_depend>quadrotor_msgs</build_depend>
-  <build_depend>tf</build_depend>
-  <build_depend>roscpp</build_depend>
-  <build_depend>visualization_msgs</build_depend>
-  <build_depend>libeigen3-dev</build_depend>
-  <build_export_depend>geometry_msgs</build_export_depend>
-  <build_export_depend>nav_msgs</build_export_depend>
-  <build_export_depend>polytope_msgs</build_export_depend>
-  <build_export_depend>quadrotor_msgs</build_export_depend>
-  <build_export_depend>tf</build_export_depend>
-  <build_export_depend>roscpp</build_export_depend>
-  <build_export_depend>visualization_msgs</build_export_depend>
-  <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>nav_msgs</exec_depend>
-  <exec_depend>polytope_msgs</exec_depend>
-  <exec_depend>quadrotor_msgs</exec_depend>
-  <exec_depend>tf</exec_depend>
-  <exec_depend>roscpp</exec_depend>
-  <exec_depend>visualization_msgs</exec_depend>
+  <license>TODO</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>polytope_msgs</depend>
+  <depend>quadrotor_msgs</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
 </package>

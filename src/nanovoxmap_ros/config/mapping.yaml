@@ -1,0 +1,97 @@
+nanovoxmap_node:
+  ros__parameters:
+    OdometryTopic:          "/quadrotor/velodyne/ground_truth"
+    CloudTopic:             "/quadrotor/velodyne/points"
+    # OdometryTopic:          "/quadrotor/realsense/ground_truth"
+    # CloudTopic:             "/quadrotor/realsense/points"
+    OutputTopic:            "/nanovoxmap/Voxel_map"
+    VoxelResolution:        0.05
+
+    # frame_id stamped on the published clouds. The odometry pose is applied
+    # directly to the points, so this must name the frame that odometry reports in.
+    WorldFrameId:           "world"
+    # The map is an unbounded sparse block-hash: memory grows with explored space,
+    # not with a preconfigured box, so no MapLowerBound/MapUpperBound are needed.
+
+    # --- Performance tuning (all optional) ------------------------------------
+    # Publish the voxel map at a fixed rate, decoupled from the sensor rate.
+    PublishRate:            20.0     # Hz; set 0 to disable timer-based publishing
+
+    # Voxel-downsample the input cloud to the map resolution before raycasting.
+    # Removes redundant rays that hit the same voxel; large speedup for dense
+    # clouds (Velodyne, RealSense), no effect on map fidelity.
+    DownsampleCloud:        true
+
+    # Message-filter queue sizes. Larger queues absorb timing jitter between
+    # the cloud and odometry streams; necessary when running the synchronizer
+    # at sensor rate.
+    # Keep these queues short for live mapping. If integration briefly falls
+    # behind, dropping an old scan is preferable to displaying stale geometry.
+    SyncQueueSize:          20
+    SubQueueSize:           5
+
+    # Clip returns farther than this from the sensor (metres). 0 disables.
+    # Long rays dominate raycast cost; clipping protects the budget at 20 Hz.
+    MaxRayLength:           5.0
+
+    # No-return frustum clearing. A depth pixel that returns nothing means its beam
+    # hit nothing in range, so everything along it out to MaxRayLength is free.
+    # Reconstructing those rays from the depth intrinsics lets the map sweep out
+    # ghost voxels in open air (e.g. the upper faces of a removed box), which plain
+    # surface returns never reach. Requires an organized depth cloud. Leave the
+    # topic empty to disable.
+    DepthCameraInfoTopic:   "/quadrotor/realsense/camera_info"
+    # Standard ROS depth clouds use optical convention (+Z forward). Set false
+    # only for Gazebo point clouds emitted as +X forward, +Y left, +Z up.
+    DepthCloudOpticalFrame: false
+
+    # Subsample factor for the no-return clearing rays (1 = every empty pixel).
+    # Neighbouring rays overlap heavily, so a coarse fan clears the same volume far
+    # more cheaply; raise it if clearing costs too much, lower it if clearing is
+    # too sparse.
+    # With 640x480 depth, stride 1 can add 307,200 full rays per frame and make
+    # the mapper lag behind the robot. Stride 4 limits this to about 19,200;
+    # the corrected Gazebo-frame ray directions still clear removed objects.
+    ClearingRayStride:      4
+
+    # Log-odds occupancy model (OctoMap-standard defaults). A single hit or miss
+    # nudges a cell's log-odds by ln(p/(1-p)) instead of overwriting its state
+    # outright, so a few spurious returns from a noisy sensor can't flip a cell -
+    # repeated, consistent observations are needed to cross the occupied/free
+    # threshold. Raise ProbHit/lower ProbMiss for a noisier sensor that needs
+    # more confirmation before trusting a return.
+    ProbHit:                0.9      # P(occupied | hit)
+    # Keep ordinary ray misses weaker than hits. At 0.1, a tiny depth shift at
+    # grazing incidence can erase the previous ground endpoint almost as soon
+    # as the new endpoint is inserted, making the ground progressively sparse
+    # while driving. Repeated no-return rays still clear removed objects.
+    ProbMiss:               0.4      # P(occupied | miss)
+    ProbMin:                0.1192   # clamp floor (most-free a cell can get)
+    ProbMax:                0.971    # clamp ceiling (most-occupied a cell can get)
+
+    # --- Signed Euclidean distance field (ESDF) --------------------------------
+    # The map maintains a signed distance field incrementally alongside occupancy:
+    # positive in free space (metres to the nearest obstacle surface), negative
+    # inside obstacles (depth below that surface). C++ queries work whether or not
+    # it is published; these settings only control publishing.
+    #
+    # Leave EsdfTopic empty/commented to publish nothing. The field is still built
+    # lazily on the first query, so nothing is lost by leaving it off.
+    EsdfTopic:              "/nanovoxmap/esdf"
+
+    # Truncation distance (metres). This is the single cost knob: only the band
+    # within this distance of a surface is stored, and a changed voxel can only
+    # affect distances within one band of it - which is what bounds the per-frame
+    # incremental update. Raise it only as far as a planner actually reads.
+    EsdfMaxDistance:        1.0
+
+    # Publish rate (Hz) for the field, and where the incremental update runs. Kept
+    # off the sensor callback so field maintenance never adds integration latency.
+    EsdfPublishRate:        2.0
+
+    # Publishing the whole 3D band is a lot of points. A single horizontal slice is
+    # the usual way to look at it in RViz (colour by the `intensity` channel, which
+    # carries the signed distance in metres). Set EsdfPublishSlice false to get the
+    # full band instead.
+    EsdfPublishSlice:       true
+    EsdfSliceHeight:        0.0      # world z of the slice, in metres

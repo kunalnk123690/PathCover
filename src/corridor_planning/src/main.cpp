@@ -1,41 +1,28 @@
-#include <iostream>
-#include "ros/ros.h"
-#include "ros/callback_queue.h"
+#include <rclcpp/rclcpp.hpp>
+#include <thread>
 #include "SubscribeAndPublish.hpp"
-
-using namespace std;
 
 
 int main(int argc, char **argv) {
-    ros::init(argc, argv, "corridor_planning_node");
+    rclcpp::init(argc, argv);
 
-    // General handle: serves the cloud + target callbacks on the global queue.
-    // The cloud callback is now trivial (just stows the latest message), so it
-    // can never block anything.
-    ros::NodeHandle nh_general;
+    try {
+        // All heavy planning runs on an internal worker thread created by
+        // SubscribeAndPublish, NOT on the executor's threads. The executor
+        // here only needs enough threads to keep the cloud callback and the
+        // odom/target callbacks (separate callback groups) from blocking
+        // each other.
+        auto node = std::make_shared<SubscribeAndPublish>();
 
-    // Transform/odom handle: gets its OWN callback queue so high-rate pose
-    // updates are processed on a dedicated thread and are never stuck behind
-    // anything else. (The original code claimed separate queues but both
-    // handles actually shared the single global queue.)
-    ros::NodeHandle nh_transform;
-    ros::CallbackQueue transform_queue;
-    nh_transform.setCallbackQueue(&transform_queue);
+        rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 2);
+        executor.add_node(node);
+        executor.spin();
+    } catch (const std::exception &e) {
+        RCLCPP_FATAL(rclcpp::get_logger("corridor_planning_node"), "%s", e.what());
+        rclcpp::shutdown();
+        return 1;
+    }
 
-    // Pass the handles into the main class. All heavy planning runs on an
-    // internal worker thread created by SubscribeAndPublish, NOT on these
-    // spinner threads.
-    SubscribeAndPublish SAPObject(Config(ros::NodeHandle("~")), nh_general, nh_transform);
-
-    // One spinner thread for the global queue (cloud + target callbacks)...
-    ros::AsyncSpinner general_spinner(1);
-    general_spinner.start();
-
-    // ...and one dedicated to the odom/transform queue.
-    ros::AsyncSpinner transform_spinner(1, &transform_queue);
-    transform_spinner.start();
-
-    ros::waitForShutdown();
-
+    rclcpp::shutdown();
     return 0;
 }

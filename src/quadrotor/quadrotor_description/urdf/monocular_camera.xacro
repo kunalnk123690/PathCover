@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<robot>
+
+    <joint name="camera_joint" type="fixed">
+        <origin xyz="0.05 0 0.2"/>
+        <parent link="base_link"/>
+        <child link="camera_link"/>
+    </joint>
+    <link name="camera_link" />
+
+    <joint name="optical_joint" type="fixed">
+        <origin rpy="${-pi/2} 0 ${-pi/2}" xyz="0 0 0"/>
+        <parent link="camera_link"/>
+        <child link="optical_link"/>
+    </joint>
+    <link name="optical_link" />
+
+    <!-- Camera Plugin -->
+    <gazebo reference="camera_link">
+        <sensor type="camera" name="camera">
+            <update_rate>30.0</update_rate>
+            <camera name="head">
+                <camera_info_topic>quadrotor/camera/camera_info</camera_info_topic>
+                <horizontal_fov>1.3962634</horizontal_fov>
+                <image>
+                    <width>800</width>
+                    <height>600</height>
+                    <format>R8G8B8</format>
+                </image>
+                <clip>
+                    <near>0.02</near>
+                    <far>300</far>
+                </clip>
+                <noise>
+                    <type>gaussian</type>
+                    <mean>0.0</mean>
+                    <stddev>0.007</stddev>
+                </noise>
+            </camera>
+            <topic>quadrotor/camera/image_raw</topic>
+            <gz_frame_id>optical_link</gz_frame_id>
+        </sensor>
+    </gazebo>
+
+</robot>

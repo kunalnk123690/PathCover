@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<robot>
+    <joint name="imu_joint" type="fixed">
+        <axis xyz="0 0 0" />
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <parent link="base_link" />
+        <child link="imu_link" />
+    </joint>
+    <link name="imu_link"/>
+
+    <!-- IMU -->
+    <gazebo reference="base_link">
+        <sensor name='imu_sensor' type='imu'>
+            <always_on>true</always_on>
+            <update_rate>500</update_rate>
+            <visualize>true</visualize>
+            <topic>quadrotor/IMU</topic>
+            <enable_metrics>true</enable_metrics>
+            <imu>
+                <angular_velocity>
+                    <noise type='gaussian'>
+                        <mean>0.0</mean>
+                        <stddev>0.0001745329</stddev>
+                        <bias_mean>0.0</bias_mean>
+                        <bias_stddev>0.0001745329</bias_stddev>
+                        <dynamic_bias_correlation_time>1000.0</dynamic_bias_correlation_time>
+                        <dynamic_bias_stddev>0.00001</dynamic_bias_stddev>
+                    </noise>
+                </angular_velocity>
+                <linear_acceleration>
+                    <noise type='gaussian'>
+                        <mean>0.0</mean>
+                        <stddev>0.00098</stddev>
+                        <bias_mean>0.0</bias_mean>
+                        <bias_stddev>0.00098</bias_stddev>
+                        <dynamic_bias_correlation_time>1000.0</dynamic_bias_correlation_time>
+                        <dynamic_bias_stddev>0.0001</dynamic_bias_stddev>
+                    </noise>
+                </linear_acceleration>
+            </imu>
+        </sensor>
+    </gazebo>
+
+</robot>

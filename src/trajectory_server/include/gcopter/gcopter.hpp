@@ -48,7 +48,7 @@ namespace gcopter
         typedef std::vector<PolyhedronH> PolyhedraH;
 
     private:
-        minco::MINCO_S3NU<> minco;
+        minco::MINCO_S3NU minco;
         flatness::FlatnessMap flatmap;
 
         double rho;
@@ -397,7 +397,10 @@ namespace gcopter
 
                     violaVel = vel.squaredNorm() - velSqrMax;
                     violaOmg = omg.squaredNorm() - omgSqrMax;
-                    cos_theta = 1.0 - 2.0 * (quat(1) * quat(1) + quat(2) * quat(2));
+                    // Clamp before acos(): cos_theta is mathematically in [-1, 1] for a unit
+                    // quaternion, but floating-point round-off (amplified when vel/acc/jerk are
+                    // extreme) can push it a hair past +-1, making acos() return NaN.
+                    cos_theta = std::min(1.0, std::max(-1.0, 1.0 - 2.0 * (quat(1) * quat(1) + quat(2) * quat(2))));
                     violaTheta = acos(cos_theta) - thetaMax;
                     violaThrust = (thr - thrustMean) * (thr - thrustMean) - thrustSqrRadi;
 
@@ -433,8 +436,13 @@ namespace gcopter
 
                     if (smoothedL1(violaTheta, smoothFactor, violaThetaPena, violaThetaPenaD))
                     {
+                        // sqrt(1 - cos_theta^2) = |sin(theta)| -> 0 at zero tilt (qx=qy=0), where
+                        // the numerator (quat(1), quat(2)) also -> 0. Floor the denominator instead
+                        // of dividing by exactly 0 (Inf) or a round-off-negative sqrt argument
+                        // (NaN); the 0/0 mathematically resolves to a bounded limit, not Inf/NaN.
+                        const double sinThetaSafe = std::max(1.0e-8, sqrt(std::max(0.0, 1.0 - cos_theta * cos_theta)));
                         gradQuat += weightTheta * violaThetaPenaD /
-                                    sqrt(1.0 - cos_theta * cos_theta) * 4.0 *
+                                    sinThetaSafe * 4.0 *
                                     Eigen::Vector4d(0.0, quat(1), quat(2), 0.0);
                         pena += weightTheta * violaThetaPena;
                     }

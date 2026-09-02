@@ -1,9 +1,0 @@
-Header header
-geometry_msgs/Point position
-geometry_msgs/Point velocity
-geometry_msgs/Point acceleration
-geometry_msgs/Point jerk
-geometry_msgs/Point snap
-float64 yaw
-float64 yaw_velocity
-float64 yaw_acceleration

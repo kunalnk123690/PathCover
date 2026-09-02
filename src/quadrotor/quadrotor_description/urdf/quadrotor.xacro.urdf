@@ -1,0 +1,73 @@
+<?xml version="1.0"?>
+<robot name="quadrotor" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+
+    <link name="base_link" />
+
+
+    <joint name="floating_base" type="fixed">
+        <origin rpy="0 0 0" xyz="0 0 0" />
+        <parent link="base_link" />
+        <child link="quadrotor_link" />
+    </joint>
+
+
+    <link name="quadrotor_link">
+        <inertial>
+            <mass value="0.716" />
+            <origin rpy="0 0 0" xyz="0 0 0" />
+            <inertia ixx="0.007" ixy="0" ixz="0" iyy="0.007" iyz="0" izz="0.012" />
+        </inertial>
+        <collision name="quadrotor_collision">
+            <origin rpy="0 0 0" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="file://$(find quadrotor_description)/meshes/f250.dae" scale="1.0 1.0 1.0" />
+            </geometry>
+        </collision>
+        <visual name="quadrotor_visual">
+            <origin rpy="0 0 0" xyz="0 0 0" />
+            <geometry>
+                <mesh filename="file://$(find quadrotor_description)/meshes/f250.dae" scale="1.0 1.0 1.0" />
+            </geometry>
+        </visual>
+    </link>
+
+
+    <!-- Ground truth -->
+    <gazebo>
+        <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+            <odom_topic>quadrotor/ground_truth</odom_topic>
+            <odom_frame>world</odom_frame>
+            <robot_base_frame>base_link</robot_base_frame>
+            <odom_publish_frequency>500</odom_publish_frequency>
+            <dimensions>3</dimensions>
+        </plugin>
+    </gazebo>
+
+
+    <gazebo>
+        <plugin filename="QuadrotorGazeboPlugin" name="QuadrotorGazeboPlugin">
+            <frame_name>base_link</frame_name>
+            <trajectory_topic>/quadrotor/trajectory</trajectory_topic>
+            <KP>14.5 14.5 14.5</KP>
+            <KD>5.8 5.8 5.8</KD>
+            <KR>2.2 2.2 1.7</KR>
+            <KW>0.21 0.21 0.25</KW>
+        </plugin>
+    </gazebo>
+
+
+    <!-- IMU -->
+    <!-- <xacro:include filename="$(find quadrotor_description)/urdf/imu.xacro" /> -->
+
+    <!-- Depth Camera -->
+    <!-- <xacro:include filename="$(find quadrotor_description)/urdf/depth_camera.xacro" /> -->
+
+    <!-- Monocular Camera -->
+    <!-- <xacro:include filename="$(find quadrotor_description)/urdf/monocular_camera.xacro" /> -->
+
+    <!-- Lidar -->
+    <xacro:include filename="$(find quadrotor_description)/urdf/lidar.xacro" />
+
+
+</robot>

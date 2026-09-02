@@ -1,10 +1,5 @@
 *build
-*devel
-install
-*logs
-*.catkin_workspace
-src/CMakeLists.txt
-*__pycache__
+*install
+*log
 *.vscode
-*.bag
-*.zip
+*__pycache__

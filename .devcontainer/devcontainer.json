@@ -1,5 +1,5 @@
 {
-    "name": "ROS Development Container for PathCover gazebo container",
+    "name": "ROS 2 Jazzy Development Container for PathCover_ros2 Gazebo",
     "privileged": true,
     "remoteUser": "PathCover",
     // "--network=host" builds on the host network stack rather than the default
@@ -30,9 +30,7 @@
     },
     // "optional" makes the tooling attach all host GPUs when the NVIDIA
     // container runtime is present, and start the container normally when it is
-    // not -- nanovoxmap then falls back to its CPU path. Hard-coding
-    // "--gpus all"/"--runtime=nvidia" in runArgs instead would make the
-    // container fail to start on a machine without a GPU.
+    // not -- Gazebo then falls back to software rendering.
     "hostRequirements": {
         "gpu": "optional"
     },

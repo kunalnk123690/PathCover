@@ -6,9 +6,11 @@ docker system prune
 # --- GPU detection ----------------------------------------------------------
 # The image builds and runs either way: nanovoxmap compiles its CUDA kernels
 # only when nvcc is present, and falls back to the CPU path at runtime when no
-# device is visible. So probe for a usable GPU and only then ask Docker for one
-# -- passing --runtime=nvidia on a host without the NVIDIA container toolkit is
-# a hard failure, not a graceful degradation.
+# device is visible. Gazebo Harmonic rendering is likewise accelerated when a
+# GPU is passed through and falls back to software rendering without one. So
+# probe for a usable GPU and only then ask Docker for one -- passing
+# --runtime=nvidia on a host without the NVIDIA container toolkit is a hard
+# failure, not a graceful degradation.
 GPU_ARGS=()
 INSTALL_CUDA=${INSTALL_CUDA:-auto}
 
@@ -42,7 +44,7 @@ xhost +local:
 # the 1500-byte bridge black-holes large packets: TCP connects fine, then apt's
 # .deb downloads stall and time out mid-transfer. Sharing the host stack
 # inherits the tunnel's MTU, so downloads complete. Harmless off-VPN.
-docker build --network=host -t ros-noetic-pathcover \
+docker build --network=host -t ros-jazzy-pathcover \
   --build-arg INSTALL_CUDA="$INSTALL_CUDA" \
   -f .devcontainer/Dockerfile .
 
@@ -56,5 +58,5 @@ docker run -it --rm \
   -v $(pwd):/home/PathCover/PathCover_ws \
   "${GPU_ARGS[@]}" \
   --privileged \
-  ros-noetic-pathcover \
+  ros-jazzy-pathcover \
   bash

@@ -22,14 +22,6 @@
     SOFTWARE.
 */
 
-// MODIFIED for the Jackal (planar) port: the MINCO classes are templated on the
-// spatial dimension `Dim` (default 3, so 3D use is unchanged). MINCO's banded
-// system acts on the *rows* of the coefficient matrix and every spatial axis
-// rides along as an independent column of the right-hand side, so the whole
-// factorization/solve/adjoint machinery is dimension-agnostic as written -- the
-// only thing that had to change is the column count of `b` and of the various
-// gradient/boundary matrices, which used to be hardcoded to 3.
-
 #ifndef MINCO_HPP
 #define MINCO_HPP
 
@@ -206,44 +198,39 @@ namespace minco
     };
 
     // MINCO for s=2 and non-uniform time
-    template <int Dim = 3>
     class MINCO_S2NU
     {
     public:
-        typedef Eigen::Matrix<double, Eigen::Dynamic, Dim> CoeffMat;
-        typedef Eigen::Matrix<double, Dim, Eigen::Dynamic> PointMat;
-        typedef Eigen::Matrix<double, Dim, 2> BoundaryMat;
-
         MINCO_S2NU() = default;
         ~MINCO_S2NU() { A.destroy(); }
 
     private:
         int N;
-        BoundaryMat headPV;
-        BoundaryMat tailPV;
+        Eigen::Matrix<double, 3, 2> headPV;
+        Eigen::Matrix<double, 3, 2> tailPV;
         BandedSystem A;
-        CoeffMat b;
+        Eigen::MatrixX3d b;
         Eigen::VectorXd T1;
         Eigen::VectorXd T2;
         Eigen::VectorXd T3;
 
     public:
-        inline void setConditions(const BoundaryMat &headState,
-                                  const BoundaryMat &tailState,
+        inline void setConditions(const Eigen::Matrix<double, 3, 2> &headState,
+                                  const Eigen::Matrix<double, 3, 2> &tailState,
                                   const int &pieceNum)
         {
             N = pieceNum;
             headPV = headState;
             tailPV = tailState;
             A.create(4 * N, 4, 4);
-            b.resize(4 * N, Dim);
+            b.resize(4 * N, 3);
             T1.resize(N);
             T2.resize(N);
             T3.resize(N);
             return;
         }
 
-        inline void setParameters(const PointMat &inPs,
+        inline void setParameters(const Eigen::Matrix3Xd &inPs,
                                   const Eigen::VectorXd &ts)
         {
             T1 = ts;
@@ -297,14 +284,14 @@ namespace minco
             return;
         }
 
-        inline void getTrajectory(Trajectory<3, Dim> &traj) const
+        inline void getTrajectory(Trajectory<3> &traj) const
         {
             traj.clear();
             traj.reserve(N);
             for (int i = 0; i < N; i++)
             {
                 traj.emplace_back(T1(i),
-                                  b.template block<4, Dim>(4 * i, 0)
+                                  b.block<4, 3>(4 * i, 0)
                                       .transpose()
                                       .rowwise()
                                       .reverse());
@@ -324,21 +311,21 @@ namespace minco
             return;
         }
 
-        inline const CoeffMat &getCoeffs(void) const
+        inline const Eigen::MatrixX3d &getCoeffs(void) const
         {
             return b;
         }
 
-        inline void getEnergyPartialGradByCoeffs(CoeffMat &gdC) const
+        inline void getEnergyPartialGradByCoeffs(Eigen::MatrixX3d &gdC) const
         {
-            gdC.resize(4 * N, Dim);
+            gdC.resize(4 * N, 3);
             for (int i = 0; i < N; i++)
             {
                 gdC.row(4 * i + 3) = 12.0 * b.row(4 * i + 2) * T2(i) +
                                      24.0 * b.row(4 * i + 3) * T3(i);
                 gdC.row(4 * i + 2) = 8.0 * b.row(4 * i + 2) * T1(i) +
                                      12.0 * b.row(4 * i + 3) * T2(i);
-                gdC.template block<2, Dim>(4 * i, 0).setZero();
+                gdC.block<2, 3>(4 * i, 0).setZero();
             }
             return;
         }
@@ -355,15 +342,15 @@ namespace minco
             return;
         }
 
-        inline void propogateGrad(const CoeffMat &partialGradByCoeffs,
+        inline void propogateGrad(const Eigen::MatrixX3d &partialGradByCoeffs,
                                   const Eigen::VectorXd &partialGradByTimes,
-                                  PointMat &gradByPoints,
+                                  Eigen::Matrix3Xd &gradByPoints,
                                   Eigen::VectorXd &gradByTimes)
 
         {
-            gradByPoints.resize(Dim, N - 1);
+            gradByPoints.resize(3, N - 1);
             gradByTimes.resize(N);
-            CoeffMat adjGrad = partialGradByCoeffs;
+            Eigen::MatrixX3d adjGrad = partialGradByCoeffs;
             A.solveAdj(adjGrad);
 
             for (int i = 0; i < N - 1; i++)
@@ -371,8 +358,8 @@ namespace minco
                 gradByPoints.col(i) = adjGrad.row(4 * i + 3).transpose();
             }
 
-            Eigen::Matrix<double, 4, Dim> B1;
-            Eigen::Matrix<double, 2, Dim> B2;
+            Eigen::Matrix<double, 4, 3> B1;
+            Eigen::Matrix<double, 2, 3> B2;
             for (int i = 0; i < N - 1; i++)
             {
                 // negative jerk
@@ -388,7 +375,7 @@ namespace minco
                 B1.row(3) = -(2.0 * b.row(i * 4 + 2) +
                               6.0 * T1(i) * b.row(i * 4 + 3));
 
-                gradByTimes(i) = B1.cwiseProduct(adjGrad.template block<4, Dim>(4 * i + 2, 0)).sum();
+                gradByTimes(i) = B1.cwiseProduct(adjGrad.block<4, 3>(4 * i + 2, 0)).sum();
             }
 
             // negative velocity
@@ -400,30 +387,25 @@ namespace minco
             B2.row(1) = -(2.0 * b.row(4 * N - 2) +
                           6.0 * T1(N - 1) * b.row(4 * N - 1));
 
-            gradByTimes(N - 1) = B2.cwiseProduct(adjGrad.template block<2, Dim>(4 * N - 2, 0)).sum();
+            gradByTimes(N - 1) = B2.cwiseProduct(adjGrad.block<2, 3>(4 * N - 2, 0)).sum();
 
             gradByTimes += partialGradByTimes;
         }
     };
 
     // MINCO for s=3 and non-uniform time
-    template <int Dim = 3>
     class MINCO_S3NU
     {
     public:
-        typedef Eigen::Matrix<double, Eigen::Dynamic, Dim> CoeffMat;
-        typedef Eigen::Matrix<double, Dim, Eigen::Dynamic> PointMat;
-        typedef Eigen::Matrix<double, Dim, 3> BoundaryMat;
-
         MINCO_S3NU() = default;
         ~MINCO_S3NU() { A.destroy(); }
 
     private:
         int N;
-        BoundaryMat headPVA;
-        BoundaryMat tailPVA;
+        Eigen::Matrix3d headPVA;
+        Eigen::Matrix3d tailPVA;
         BandedSystem A;
-        CoeffMat b;
+        Eigen::MatrixX3d b;
         Eigen::VectorXd T1;
         Eigen::VectorXd T2;
         Eigen::VectorXd T3;
@@ -431,15 +413,15 @@ namespace minco
         Eigen::VectorXd T5;
 
     public:
-        inline void setConditions(const BoundaryMat &headState,
-                                  const BoundaryMat &tailState,
+        inline void setConditions(const Eigen::Matrix3d &headState,
+                                  const Eigen::Matrix3d &tailState,
                                   const int &pieceNum)
         {
             N = pieceNum;
             headPVA = headState;
             tailPVA = tailState;
             A.create(6 * N, 6, 6);
-            b.resize(6 * N, Dim);
+            b.resize(6 * N, 3);
             T1.resize(N);
             T2.resize(N);
             T3.resize(N);
@@ -448,7 +430,7 @@ namespace minco
             return;
         }
 
-        inline void setParameters(const PointMat &inPs,
+        inline void setParameters(const Eigen::Matrix3Xd &inPs,
                                   const Eigen::VectorXd &ts)
         {
             T1 = ts;
@@ -530,14 +512,14 @@ namespace minco
             return;
         }
 
-        inline void getTrajectory(Trajectory<5, Dim> &traj) const
+        inline void getTrajectory(Trajectory<5> &traj) const
         {
             traj.clear();
             traj.reserve(N);
             for (int i = 0; i < N; i++)
             {
                 traj.emplace_back(T1(i),
-                                  b.template block<6, Dim>(6 * i, 0)
+                                  b.block<6, 3>(6 * i, 0)
                                       .transpose()
                                       .rowwise()
                                       .reverse());
@@ -560,14 +542,14 @@ namespace minco
             return;
         }
 
-        inline const CoeffMat &getCoeffs(void) const
+        inline const Eigen::MatrixX3d &getCoeffs(void) const
         {
             return b;
         }
 
-        inline void getEnergyPartialGradByCoeffs(CoeffMat &gdC) const
+        inline void getEnergyPartialGradByCoeffs(Eigen::MatrixX3d &gdC) const
         {
-            gdC.resize(6 * N, Dim);
+            gdC.resize(6 * N, 3);
             for (int i = 0; i < N; i++)
             {
                 gdC.row(6 * i + 5) = 240.0 * b.row(6 * i + 3) * T3(i) +
@@ -579,7 +561,7 @@ namespace minco
                 gdC.row(6 * i + 3) = 72.0 * b.row(6 * i + 3) * T1(i) +
                                      144.0 * b.row(6 * i + 4) * T2(i) +
                                      240.0 * b.row(6 * i + 5) * T3(i);
-                gdC.template block<3, Dim>(6 * i, 0).setZero();
+                gdC.block<3, 3>(6 * i, 0).setZero();
             }
             return;
         }
@@ -599,15 +581,15 @@ namespace minco
             return;
         }
 
-        inline void propogateGrad(const CoeffMat &partialGradByCoeffs,
+        inline void propogateGrad(const Eigen::MatrixX3d &partialGradByCoeffs,
                                   const Eigen::VectorXd &partialGradByTimes,
-                                  PointMat &gradByPoints,
+                                  Eigen::Matrix3Xd &gradByPoints,
                                   Eigen::VectorXd &gradByTimes)
 
         {
-            gradByPoints.resize(Dim, N - 1);
+            gradByPoints.resize(3, N - 1);
             gradByTimes.resize(N);
-            CoeffMat adjGrad = partialGradByCoeffs;
+            Eigen::MatrixX3d adjGrad = partialGradByCoeffs;
             A.solveAdj(adjGrad);
 
             for (int i = 0; i < N - 1; i++)
@@ -615,8 +597,8 @@ namespace minco
                 gradByPoints.col(i) = adjGrad.row(6 * i + 5).transpose();
             }
 
-            Eigen::Matrix<double, 6, Dim> B1;
-            Eigen::Matrix<double, 3, Dim> B2;
+            Eigen::Matrix<double, 6, 3> B1;
+            Eigen::Matrix3d B2;
             for (int i = 0; i < N - 1; i++)
             {
                 // negative velocity
@@ -645,7 +627,7 @@ namespace minco
                 // negative crackle
                 B1.row(1) = -120.0 * b.row(i * 6 + 5);
 
-                gradByTimes(i) = B1.cwiseProduct(adjGrad.template block<6, Dim>(6 * i + 3, 0)).sum();
+                gradByTimes(i) = B1.cwiseProduct(adjGrad.block<6, 3>(6 * i + 3, 0)).sum();
             }
 
             // negative velocity
@@ -666,30 +648,25 @@ namespace minco
                           24.0 * T1(N - 1) * b.row(6 * N - 2) +
                           60.0 * T2(N - 1) * b.row(6 * N - 1));
 
-            gradByTimes(N - 1) = B2.cwiseProduct(adjGrad.template block<3, Dim>(6 * N - 3, 0)).sum();
+            gradByTimes(N - 1) = B2.cwiseProduct(adjGrad.block<3, 3>(6 * N - 3, 0)).sum();
 
             gradByTimes += partialGradByTimes;
         }
     };
 
     // MINCO for s=4 and non-uniform time
-    template <int Dim = 3>
     class MINCO_S4NU
     {
     public:
-        typedef Eigen::Matrix<double, Eigen::Dynamic, Dim> CoeffMat;
-        typedef Eigen::Matrix<double, Dim, Eigen::Dynamic> PointMat;
-        typedef Eigen::Matrix<double, Dim, 4> BoundaryMat;
-
         MINCO_S4NU() = default;
         ~MINCO_S4NU() { A.destroy(); }
 
     private:
         int N;
-        BoundaryMat headPVAJ;
-        BoundaryMat tailPVAJ;
+        Eigen::Matrix<double, 3, 4> headPVAJ;
+        Eigen::Matrix<double, 3, 4> tailPVAJ;
         BandedSystem A;
-        CoeffMat b;
+        Eigen::MatrixX3d b;
         Eigen::VectorXd T1;
         Eigen::VectorXd T2;
         Eigen::VectorXd T3;
@@ -699,15 +676,15 @@ namespace minco
         Eigen::VectorXd T7;
 
     public:
-        inline void setConditions(const BoundaryMat &headState,
-                                  const BoundaryMat &tailState,
+        inline void setConditions(const Eigen::Matrix<double, 3, 4> &headState,
+                                  const Eigen::Matrix<double, 3, 4> &tailState,
                                   const int &pieceNum)
         {
             N = pieceNum;
             headPVAJ = headState;
             tailPVAJ = tailState;
             A.create(8 * N, 8, 8);
-            b.resize(8 * N, Dim);
+            b.resize(8 * N, 3);
             T1.resize(N);
             T2.resize(N);
             T3.resize(N);
@@ -718,7 +695,7 @@ namespace minco
             return;
         }
 
-        inline void setParameters(const PointMat &inPs,
+        inline void setParameters(const Eigen::MatrixXd &inPs,
                                   const Eigen::VectorXd &ts)
         {
             T1 = ts;
@@ -835,14 +812,14 @@ namespace minco
             return;
         }
 
-        inline void getTrajectory(Trajectory<7, Dim> &traj) const
+        inline void getTrajectory(Trajectory<7> &traj) const
         {
             traj.clear();
             traj.reserve(N);
             for (int i = 0; i < N; i++)
             {
                 traj.emplace_back(T1(i),
-                                  b.template block<8, Dim>(8 * i, 0)
+                                  b.block<8, 3>(8 * i, 0)
                                       .transpose()
                                       .rowwise()
                                       .reverse());
@@ -869,14 +846,14 @@ namespace minco
             return;
         }
 
-        inline const CoeffMat &getCoeffs(void) const
+        inline const Eigen::MatrixX3d &getCoeffs(void) const
         {
             return b;
         }
 
-        inline void getEnergyPartialGradByCoeffs(CoeffMat &gdC) const
+        inline void getEnergyPartialGradByCoeffs(Eigen::MatrixX3d &gdC) const
         {
-            gdC.resize(8 * N, Dim);
+            gdC.resize(8 * N, 3);
             for (int i = 0; i < N; i++)
             {
                 gdC.row(8 * i + 7) = 10080.0 * b.row(8 * i + 4) * T4(i) +
@@ -895,7 +872,7 @@ namespace minco
                                      2880.0 * b.row(8 * i + 5) * T2(i) +
                                      5760.0 * b.row(8 * i + 6) * T3(i) +
                                      10080.0 * b.row(8 * i + 7) * T4(i);
-                gdC.template block<4, Dim>(8 * i, 0).setZero();
+                gdC.block<4, 3>(8 * i, 0).setZero();
             }
             return;
         }
@@ -919,14 +896,14 @@ namespace minco
             return;
         }
 
-        inline void propogateGrad(const CoeffMat &partialGradByCoeffs,
+        inline void propogateGrad(const Eigen::MatrixX3d &partialGradByCoeffs,
                                   const Eigen::VectorXd &partialGradByTimes,
-                                  PointMat &gradByPoints,
+                                  Eigen::Matrix3Xd &gradByPoints,
                                   Eigen::VectorXd &gradByTimes)
         {
-            gradByPoints.resize(Dim, N - 1);
+            gradByPoints.resize(3, N - 1);
             gradByTimes.resize(N);
-            CoeffMat adjGrad = partialGradByCoeffs;
+            Eigen::MatrixX3d adjGrad = partialGradByCoeffs;
             A.solveAdj(adjGrad);
 
             for (int i = 0; i < N - 1; i++)
@@ -934,8 +911,8 @@ namespace minco
                 gradByPoints.col(i) = adjGrad.row(8 * i + 7).transpose();
             }
 
-            Eigen::Matrix<double, 8, Dim> B1;
-            Eigen::Matrix<double, 4, Dim> B2;
+            Eigen::Matrix<double, 8, 3> B1;
+            Eigen::Matrix<double, 4, 3> B2;
             for (int i = 0; i < N - 1; i++)
             {
                 // negative velocity
@@ -981,7 +958,7 @@ namespace minco
                 // negative dd_crackle
                 B1.row(2) = -5040.0 * b.row(i * 8 + 7);
 
-                gradByTimes(i) = B1.cwiseProduct(adjGrad.template block<8, Dim>(8 * i + 4, 0)).sum();
+                gradByTimes(i) = B1.cwiseProduct(adjGrad.block<8, 3>(8 * i + 4, 0)).sum();
             }
 
             // negative velocity
@@ -1014,7 +991,7 @@ namespace minco
                           360.0 * T2(N - 1) * b.row(8 * N - 2) +
                           840.0 * T3(N - 1) * b.row(8 * N - 1));
 
-            gradByTimes(N - 1) = B2.cwiseProduct(adjGrad.template block<4, Dim>(8 * N - 4, 0)).sum();
+            gradByTimes(N - 1) = B2.cwiseProduct(adjGrad.block<4, 3>(8 * N - 4, 0)).sum();
             gradByTimes += partialGradByTimes;
         }
     };

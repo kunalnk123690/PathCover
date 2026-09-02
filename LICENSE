@@ -1,11 +1,6 @@
-PathCover: A Fast Convex Decomposition along a Path via
-Randomized Iterative Space Partitioning (RISP) on Point Clouds
-
 BSD 3-Clause License
 
-Copyright (c) 2026 Kunal Sanjay Narkhede
-                   Department of Mechanical Engineering
-                   University of Delaware
+Copyright (c) 2026 Kunal Sanjay Narkhede <kunalnk@udel.edu>
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -18,13 +13,13 @@ modification, are permitted provided that the following conditions are met:
    this list of conditions and the following disclaimer in the documentation
    and/or other materials provided with the distribution.
 
-3. Neither the name of the copyright holder nor the names of its
-   contributors may be used to endorse or promote products derived from
-   this software without specific prior written permission.
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
 DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -32,56 +27,3 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-
---------------------------------------------------------------------------------
-THIRD-PARTY COMPONENTS
---------------------------------------------------------------------------------
-
-This distribution bundles code under separate licenses, retained in full at the
-paths below. Those terms govern the corresponding files, not the BSD 3-Clause
-license above.
-
-  src/trajectory_server/include/gcopter/
-      GCOPTER / MINCO. MIT License.
-      Copyright (c) 2021 Zhepei Wang and Fei Gao.
-      See src/trajectory_server/LICENSE.GCOPTER
-
-  src/jackal_description/
-      Jackal description, simulation configuration, and worlds, except for
-      the sensor meshes separately listed below.
-      BSD 3-Clause License.
-      Copyright (c) 2021 Clearpath Robotics Inc.
-      See src/jackal_description/LICENSE
-
-  src/quadrotor_sim/quadrotor_description/worlds/floorplan1/floorplan1_static.world
-      Gazebo environment asset only -- the simulator
-      itself (descriptions, plugins, controller, nodes) is original work
-      under the BSD 3-Clause license above. From uav_simulator
-      (https://github.com/Zhefan-Xu/uav_simulator,
-      commit 80d7a4a1b674abba3c9234ff29c0db7ddf99e63c). MIT License.
-      Copyright (c) 2023 Zhefan Xu.
-      See src/quadrotor_sim/quadrotor_description/worlds/floorplan1/LICENSE.uav_simulator
-
-  src/quadrotor_sim/quadrotor_description/meshes/VLP16_base_1.dae
-  src/quadrotor_sim/quadrotor_description/meshes/VLP16_base_2.dae
-  src/quadrotor_sim/quadrotor_description/meshes/VLP16_scan.dae
-      Velodyne VLP-16 meshes, from the velodyne_simulator package
-      (velodyne_description/meshes). BSD License.
-      Copyright (c) 2015-2018, Dataspeed Inc.
-      See LICENSE.velodyne_simulator
-
-  src/quadrotor_sim/quadrotor_description/meshes/d435.dae
-  src/jackal_description/meshes/d435.dae
-      Intel RealSense D435 mesh, byte-identical to the copy distributed by
-      realsense2_description. Apache License 2.0.
-      Copyright Intel Corporation and its contributors.
-      See LICENSE.realsense2_description
-
-  src/third_party/jps_lib/
-      JPS3D and the distance-map planner. BSD 3-Clause License.
-      Copyright (c) 2017 Sikang Liu.
-      See src/third_party/jps_lib/LICENSE
-
-  src/third_party/qhull_lib/
-      Qhull. Qhull License (http://www.qhull.org/COPYING.txt).

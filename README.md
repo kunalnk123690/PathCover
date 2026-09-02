@@ -1,10 +1,7 @@
 # PathCover
 
-<!-- <img src="media/simulation_drone.webp" width="100%" alt="Quadrotor running PathCover in Gazebo">
+[![ROS 2](https://img.shields.io/badge/ROS-2%20Jazzy-22314E.svg)](https://github.com/kunalnk123690/PathCover/tree/ros2) [![ROS Noetic](https://img.shields.io/badge/ROS-Noetic-22314E.svg)](https://github.com/kunalnk123690/PathCover/tree/master) [![License: BSD 3-Clause](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](LICENSE)
 
-<img src="media/simulation_jackal.webp" width="100%" alt="Jackal running PathCover in Gazebo">
-
-<sub>Looped previews: [quadrotor](media/simulation_drone.gif) · [Jackal](media/simulation_jackal.gif)</sub> -->
 <p align="center">
   <img src="media/simulation_drone.gif"/>
   <img src="media/simulation_jackal.gif"/>

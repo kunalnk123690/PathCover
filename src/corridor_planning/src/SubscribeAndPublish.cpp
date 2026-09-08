@@ -20,7 +20,6 @@ SubscribeAndPublish::SubscribeAndPublish(const Config &conf, ros::NodeHandle nhg
 
 
   resolution_ = config_.VoxelResolution;
-  deflation_factor_ = config_.DeflationFactor; // Tolerance for polyhedra computation
   horizon_ = config_.horizon;
   filter_radius_ = config_.filterRadius;
   obstacle_z_min_ = config_.ObstacleZMin;
@@ -208,7 +207,7 @@ inline bool SubscribeAndPublish::PlanCorridor(std::vector<VectorDim> &filteredCl
 
   // -------- The benchmark target: PathCover on the FULL cloud (unchanged) ----
   auto tp0 = std::chrono::high_resolution_clock::now();
-  PathCover::pathCover<double, PATHCOVER_DIM>(filteredCloud, path_, A_bound_, b_bound_, A_, b_, seeds_, all_pts_remaining, deflation_factor_, horizon_);
+  PathCover::pathCover<double, PATHCOVER_DIM>(filteredCloud, path_, A_bound_, b_bound_, A_, b_, seeds_, all_pts_remaining, horizon_);
   auto tp1 = std::chrono::high_resolution_clock::now();
   double pathcover_ms = std::chrono::duration<double, std::milli>(tp1 - tp0).count();
   // ROS_INFO_STREAM("PathCover (" << filteredCloud.size() << " pts): " << pathcover_ms << " ms");

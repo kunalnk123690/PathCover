@@ -223,7 +223,23 @@ namespace geo_utils
                            const double &epsilon,
                            Eigen::Matrix2Xd &fV)
     {
+        // A degenerate dual hull can leave no finite vertices at all (every
+        // edge passing through the origin), and a polytope collapsed to a
+        // single point leaves vertices that are all zero. maxCoeff() on an
+        // empty matrix is undefined, and a zero magnitude would make the
+        // quantization step NaN, so both are caught here rather than being
+        // allowed to poison the corridor.
+        if (rV.cols() == 0)
+        {
+            fV.resize(2, 0);
+            return;
+        }
         const double mag = std::max(fabs(rV.maxCoeff()), fabs(rV.minCoeff()));
+        if (!(mag > 0.0))
+        {
+            fV = rV.leftCols(1).eval();
+            return;
+        }
         const double res = mag * std::max(fabs(epsilon) / mag, DBL_EPSILON);
         std::set<Eigen::Vector2d, filterLess2d> filter;
         fV = rV;

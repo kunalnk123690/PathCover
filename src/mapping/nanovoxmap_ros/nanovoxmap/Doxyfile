@@ -1,0 +1,100 @@
+# Doxygen configuration for NanoVoxMap.
+#
+# Generate the HTML API reference into docs/html:
+#     doxygen Doxyfile          # from the repository root
+# or, through CMake:
+#     cmake -S . -B build -DBUILD_DOCS=ON && cmake --build build --target docs
+#
+# Graphviz (dot) is optional; set HAVE_DOT = NO below if it is not installed.
+
+#---------------------------------------------------------------------------
+# Project
+#---------------------------------------------------------------------------
+PROJECT_NAME           = "NanoVoxMap"
+PROJECT_NUMBER         = 1.0.0
+PROJECT_BRIEF          = "ROS-independent, sparse block-hashed 3D occupancy map with an ESDF"
+OUTPUT_DIRECTORY       = docs
+CREATE_SUBDIRS         = NO
+FULL_PATH_NAMES        = NO
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = YES
+TAB_SIZE               = 4
+OPTIMIZE_OUTPUT_FOR_C  = NO
+BUILTIN_STL_SUPPORT    = YES
+
+#---------------------------------------------------------------------------
+# What to extract
+#---------------------------------------------------------------------------
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+SORT_MEMBER_DOCS       = NO
+GENERATE_TODOLIST      = YES
+
+#---------------------------------------------------------------------------
+# Input
+#---------------------------------------------------------------------------
+INPUT                  = include src test README.md
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.h *.cpp *.cu *.cuh *.md
+EXTENSION_MAPPING      = cu=C++ cuh=C++
+USE_MDFILE_AS_MAINPAGE = README.md
+EXCLUDE                = build
+
+#---------------------------------------------------------------------------
+# Preprocessing
+#---------------------------------------------------------------------------
+# Define NANOVOXMAP_WITH_CUDA so the CUDA-only members (destructor, the ESDF /
+# insert device methods, and the device buffers) are included in the docs.
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+PREDEFINED             = NANOVOXMAP_WITH_CUDA \
+                         __global__= \
+                         __device__= \
+                         __host__= \
+                         __forceinline__=
+
+#---------------------------------------------------------------------------
+# Warnings
+#---------------------------------------------------------------------------
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = YES
+
+#---------------------------------------------------------------------------
+# HTML output
+#---------------------------------------------------------------------------
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_TREEVIEW      = YES
+DISABLE_INDEX          = NO
+FULL_SIDEBAR           = NO
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+
+#---------------------------------------------------------------------------
+# Disabled outputs
+#---------------------------------------------------------------------------
+GENERATE_LATEX         = NO
+GENERATE_XML           = NO
+GENERATE_MAN           = NO
+GENERATE_RTF           = NO
+
+#---------------------------------------------------------------------------
+# Diagrams (require Graphviz). Set HAVE_DOT = NO if dot is unavailable.
+#---------------------------------------------------------------------------
+HAVE_DOT               = YES
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+CLASS_GRAPH            = YES
+COLLABORATION_GRAPH    = YES
+INCLUDE_GRAPH          = YES
+INCLUDED_BY_GRAPH      = YES
+CALL_GRAPH             = NO
+CALLER_GRAPH           = NO

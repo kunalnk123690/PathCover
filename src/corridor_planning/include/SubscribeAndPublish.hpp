@@ -68,7 +68,6 @@ struct Config {
     std::string GroundTruthTopic;
     std::string FilteredCloudTopic;
     std::string PolytopeTopic;
-    double DeflationFactor;
     double VoxelResolution;
     double filterRadius;
     double ObstacleZMin;
@@ -86,7 +85,6 @@ struct Config {
 
     Config(const ros::NodeHandle &nh_priv) {
         nh_priv.getParam("MapTopic", mapTopic);
-        nh_priv.getParam("DeflationFactor", DeflationFactor);
         nh_priv.getParam("VoxelResolution", VoxelResolution);
         nh_priv.getParam("MapLowerBound", MapLowerBound);
         nh_priv.getParam("MapUpperBound", MapUpperBound);
@@ -187,7 +185,6 @@ class SubscribeAndPublish {
         std::vector<Eigen::VectorXd> b_;
         std::vector<VectorDim> seeds_;
         std::unique_ptr<PolyhedraPublisher<double, PATHCOVER_DIM>> polyhedraPublisher_;
-        double deflation_factor_;
         int horizon_;
         VectorDim start_;
         VectorDim goal_;

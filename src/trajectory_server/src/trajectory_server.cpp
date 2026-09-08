@@ -99,6 +99,7 @@ namespace trajectory_server
         }
 
         safetyMargin_ = nh_.param("SafetyMargin", 0.3);
+        corridorSliceHeight_ = nh_.param("CorridorSliceHeight", 0.0);
 
         replanPeriod_ = nh_.param("ReplanPeriod", 0.5);
         goalReachedThreshold_ = nh_.param("GoalReachedThreshold", 0.2);
@@ -167,27 +168,100 @@ namespace trajectory_server
 
         for (const auto &poly : msg->polytope)
         {
-            // corridor_planning publishes planar polytopes: A is a row-major
-            // (rows x 2) flattening, so each row is two coefficients.
-            const int rows = static_cast<int>(poly.A.size() / 2);
-            Eigen::MatrixX3d hPoly(rows, 3);
+            // A is a row-major (rows x stride) flattening and b has one entry
+            // per row, so the stride tells us the dimension the corridor was
+            // generated in. Deriving it (rather than assuming 2) is what lets
+            // the planar build consume the 3-D corridor that corridor_planning
+            // actually publishes: that node is hardcoded to
+            // Eigen::Matrix<double, -1, 3>, so its rows carry three
+            // coefficients even when the robot is a ground vehicle.
+            if (poly.b.empty() || poly.A.size() % poly.b.size() != 0)
+            {
+                ROS_WARN_THROTTLE(2.0,
+                                  "trajectory_server_node: malformed Polytope (A has %zu entries, "
+                                  "b has %zu); ignoring corridor.",
+                                  poly.A.size(), poly.b.size());
+                hasPoly_ = false;
+                hPolys_.clear();
+                return;
+            }
+
+            const int rows = static_cast<int>(poly.b.size());
+            const int stride = static_cast<int>(poly.A.size() / poly.b.size());
+            if (stride != 2 && stride != 3)
+            {
+                ROS_WARN_THROTTLE(2.0,
+                                  "trajectory_server_node: Polytope rows have %d coefficients; "
+                                  "the planar build understands only 2 (planar corridor) or "
+                                  "3 (3-D corridor, sliced at CorridorSliceHeight).",
+                                  stride);
+                hasPoly_ = false;
+                hPolys_.clear();
+                return;
+            }
+
             // Ax <= b  <=>  n.dot(x) + d <= 0 with n = A_row, d = -b_row.
             // Shrink b by safetyMargin_ * ||A_row|| (not just safetyMargin_)
             // so the inward shift is exactly safetyMargin_ metres regardless
             // of whether A_row is normalized; GCOPTER itself normalizes each
             // row by ||A_row|| in setup().
+            //
+            // For a 3-D corridor we take the planar cross-section at
+            // z = corridorSliceHeight_: substituting that z into
+            // ax*x + ay*y + az*z <= b leaves ax*x + ay*y <= b - az*z, which is
+            // the exact horizontal slice of the polytope at the height the
+            // base drives at. The margin is scaled by the *planar* row norm,
+            // since after the substitution that is the row's true normal
+            // length -- using the 3-D norm would over-shrink every face that
+            // is tilted in z.
+            //
+            // A face whose normal is purely vertical (a floor or ceiling
+            // plane) slices to a constraint with no x/y dependence at all. It
+            // carries no planar information and, worse, its zero row norm
+            // would become a division by zero in GcopterSolver::setup(), so it
+            // is dropped -- unless it is *violated* at the slice height, which
+            // means the polytope simply does not reach that height and the
+            // whole corridor has to be rejected.
+            Eigen::MatrixX3d hPoly(rows, 3);
+            int kept = 0;
+            bool emptySlice = false;
             for (int i = 0; i < rows; i++)
             {
-                const double ax = poly.A[2 * i + 0];
-                const double ay = poly.A[2 * i + 1];
-                const double normA = std::sqrt(ax * ax + ay * ay);
-                const double safeB = poly.b[i] - safetyMargin_ * normA;
+                const double ax = poly.A[stride * i + 0];
+                const double ay = poly.A[stride * i + 1];
+                const double az = stride == 3 ? poly.A[stride * i + 2] : 0.0;
 
-                hPoly(i, 0) = ax;
-                hPoly(i, 1) = ay;
-                hPoly(i, 2) = -safeB;
+                const double normA = std::sqrt(ax * ax + ay * ay);
+                const double bSliced = poly.b[i] - az * corridorSliceHeight_;
+
+                if (normA < 1.0e-9)
+                {
+                    if (bSliced < 0.0)
+                    {
+                        emptySlice = true;
+                        break;
+                    }
+                    continue;
+                }
+
+                hPoly(kept, 0) = ax;
+                hPoly(kept, 1) = ay;
+                hPoly(kept, 2) = -(bSliced - safetyMargin_ * normA);
+                kept++;
             }
-            hPolys.push_back(hPoly);
+
+            if (emptySlice || kept < 3)
+            {
+                ROS_WARN_THROTTLE(2.0,
+                                  "trajectory_server_node: corridor polytope is empty or degenerate "
+                                  "at z = %.2f (CorridorSliceHeight); ignoring corridor.",
+                                  corridorSliceHeight_);
+                hasPoly_ = false;
+                hPolys_.clear();
+                return;
+            }
+
+            hPolys.push_back(hPoly.topRows(kept));
         }
 
         if (msg->goal.size() < 2)

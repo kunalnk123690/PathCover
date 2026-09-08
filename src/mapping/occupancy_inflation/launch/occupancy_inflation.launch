@@ -1,0 +1,20 @@
+<launch>
+  <!--
+    Standalone obstacle inflation. Nothing in the simulation depends on this
+    node; run it alongside a source of PointCloud2 data to tune the inflation.
+
+    Override the config file with:
+      roslaunch occupancy_inflation occupancy_inflation.launch config:=/path/to/my.yaml
+    Individual keys can still be overridden after the rosparam load, e.g.
+      <param name="radius_xy" value="0.35" />
+  -->
+  <arg name="config"
+       default="$(find occupancy_inflation)/config/inflation.yaml" />
+  <arg name="node_name" default="occupancy_inflation_node" />
+  <arg name="output" default="screen" />
+
+  <node pkg="occupancy_inflation" type="occupancy_inflation_node"
+        name="$(arg node_name)" output="$(arg output)">
+    <rosparam file="$(arg config)" command="load" />
+  </node>
+</launch>

@@ -486,6 +486,19 @@ namespace trajectory_server
                     // the robot slows to a stop (where the yaw rate of the
                     // geometric path genuinely diverges but the robot is free
                     // to just spin in place).
+                    //
+                    // The violation is deliberately left as this ratio rather
+                    // than being multiplied out to the polynomial
+                    // cr^2 - omega_max^2 (|v|^4 + eps). Multiplying through
+                    // describes the same feasible set with much better
+                    // conditioning (no 1/(|v|^4+eps)^2 in the gradient), but it
+                    // also scales the violation by (|v|^4 + eps), which
+                    // under-weights exactly the slow tight turns the limit
+                    // exists to prevent: measured against a binding
+                    // omg_max = 0.5 rad/s the multiplied form let the solved
+                    // path reach 2.1 rad/s, where this form held it to 0.50.
+                    // Keeping the violation in true omega^2 units is what makes
+                    // the penalty weight mean the same thing at every speed.
                     {
                         const double crossVA = vel(0) * acc(1) - vel(1) * acc(0);
                         const double sqrSpeed = vel.squaredNorm();

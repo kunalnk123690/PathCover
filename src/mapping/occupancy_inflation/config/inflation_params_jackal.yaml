@@ -1,0 +1,263 @@
+# Parameters for occupancy_inflation_node.
+# Loaded into the node's private namespace, so every key below is read as
+# ~<key> (e.g. ~radius_xy, ~input_filter/min).
+
+# ---------------------------------------------------------------------------
+# Topics
+# ---------------------------------------------------------------------------
+# PointCloud2 to inflate. The default matches the map generator in this repo.
+input_topic: "/nanovoxmap/Voxel_map"
+
+# Inflated voxel centres, published as PointCloud2 (XYZI). Intensity is 0 for
+# voxels that contained an input point and 1 for voxels added by the inflation,
+# so you can colour by intensity in rviz to see exactly what was added.
+output_topic: "/occupancy_inflation/inflated_cloud"
+
+# Optional: the voxelised input without any inflation, handy as an A/B overlay.
+publish_seed_cloud: false
+seed_topic: "/occupancy_inflation/seed_cloud"
+
+# Write the intensity field. Turning it off drops the point from 16 to 12 bytes,
+# which is a quarter off every message; do that once you have stopped looking at
+# the inflation in rviz. Consumers that only read x/y/z do not care either way.
+publish_intensity: true
+
+# Skip publishing when the map came out identical to the last one. A latched
+# publisher still hands the last map to anyone who subscribes later, so this
+# only removes messages that would have carried no news.
+#
+# It also makes the output rate depend on how much the map is changing: with a
+# mostly-static map the output drops well below the input rate (measured ~6 Hz
+# out of a 20 Hz input on a static floorplan). Ignored when publish_rate_hz > 0.
+publish_on_change_only: true
+
+# Publish the inflated map on a timer at this rate, in Hz, instead of once per
+# incoming cloud. 0 keeps the original behaviour: one output per input message,
+# subject to publish_on_change_only.
+#
+# Set this when the output rate has to be a fixed, stated number rather than
+# whatever the mapper and the change detector between them produce. The timer
+# republishes the current map whether or not it changed and whether or not a
+# cloud arrived, so the rate holds even if the mapper stalls; the stamp stays
+# that of the cloud the map was last built from, so consumers can still see how
+# old the content is. It skips the work entirely while nothing is subscribed.
+publish_rate_hz: 20.0
+
+# Frame for the published clouds. Leave empty to reuse the input cloud's frame.
+frame_id: ""
+
+queue_size: 1
+# Latch the output so rviz still shows the last map if the source published once.
+latch: true
+# Cap on how often incoming clouds are processed, in Hz. 0 disables throttling.
+max_rate_hz: 0.0
+# Log voxel counts and timing for every processed cloud.
+verbose: false
+
+# ---------------------------------------------------------------------------
+# Inflation
+# ---------------------------------------------------------------------------
+# Voxel edge length in metres. Drives both the voxelisation of the input and
+# the step size of the structuring element.
+resolution: 0.1
+
+# Inflation radii in metres. radius_xy applies to both x and y; radius_z is the
+# vertical half-extent, and 0.0 makes the element purely planar.
+#
+# radius_z is 0.0 because the Jackal is a ground robot: the corridor is planned
+# in (x, y) only, and corridor_planning slices the map to the height band the
+# body can hit and projects that band down to the plane. Inflating vertically
+# would only smear each obstacle up and down inside a band that is about to be
+# flattened anyway -- it cannot change the 2D footprint that comes out, and it
+# multiplies both the dilation cost and the published point count by the number
+# of z layers in the kernel. It also removes the one artefact the README warns
+# about: with no vertical component, seeds just above the ground can no longer
+# inflate downwards, so output_bounds is not needed to clip voxels below z = 0.
+#
+# radius_xy is sized from the Jackal's collision footprint in jackal.urdf.xacro,
+# measured in the base_link frame the planner tracks. The wheels, not the
+# chassis box, set it on both axes:
+#
+#   chassis box     0.420 x 0.310 m                    -> 0.261 m circumscribed
+#   wheels, x       wheelbase/2 + wheel_radius         = 0.131 + 0.098 = 0.229
+#   wheels, y       track/2 + wheel_width/2            = 0.188 + 0.020 = 0.208
+#   circumscribed   sqrt(0.229^2 + 0.208^2)            = 0.309 m   <- the driver
+#
+# The kernel only keeps voxels whose centre is inside the disc, so the clearance
+# it actually realises is quantised down to the lattice and always falls short
+# of the radius asked for. That shortfall is not smooth -- it steps, and there
+# is a wide plateau right where the Jackal needs to be. Measured at
+# resolution 0.1 m:
+#
+#   radius_xy      kernel cells   realised clearance
+#   0.30 - 0.31       25 - 29        0.250 - 0.255    (too small)
+#   0.32 - 0.36       37             0.292            (still under 0.309)
+#   0.37 - 0.39       45             0.350            <- chosen, 0.38 mid-plateau
+#   0.40 - 0.41       49             0.354
+#
+# So 0.35 -- the intuitive "footprint plus a bit" -- would realise only 0.292 m
+# and leave the robot's own corners outside the inflated set. 0.38 is the
+# smallest value that clears 0.309, and sitting mid-plateau means a small edit
+# to the radius cannot silently drop the kernel a step.
+#
+# Re-derive these if the wheel geometry or the resolution change.
+radius_xy: 0.38
+radius_z: 0.0
+
+# Structuring element:
+#   box       - a cuboid, matching the original GridMap behaviour
+#   ellipsoid - only voxels inside the ellipsoid spanned by the radii, which
+#               is a closer approximation of a real clearance envelope and
+#               produces far fewer voxels to publish
+#
+# With radius_z at 0.0 the ellipsoid degenerates to a disc in the xy plane, one
+# voxel thick, which is exactly the element a planar planner wants. The box
+# alternative is wrong twice over at these radii: it is a square, so it would
+# push the diagonals out to 0.636 m against the 0.354 m it gives on the axes --
+# nearly double the clearance in the direction the Jackal is no wider in -- and
+# it costs 81 kernel cells against the disc's 45.
+shape: ellipsoid
+
+# Origin of the voxel lattice. This only shifts which points share a voxel; it
+# does not bound the map (the lattice reaches about 1e6 voxels from here).
+origin: [0.0, 0.0, 0.0]
+
+# Publish only the boundary shell of the inflated map, not its solid interior.
+#
+# The inflation itself is unchanged: the map is dilated exactly as it is now,
+# and then every voxel whose 26 neighbours are all occupied is left out of the
+# published cloud. Nothing that could block a path is dropped. A 26-connected
+# step from a free voxel onto a discarded interior voxel is impossible, because
+# an interior voxel has no free neighbour -- that is what makes it interior --
+# so the free space this cloud describes, outside the obstacles, is the free
+# space the solid cloud described. What goes is the fill behind the surface,
+# which nothing approaching from outside can reach.
+#
+# It is a message-size setting. The solid map grows with the volume of the
+# dilated set and the shell only with its area, so the published cloud comes
+# back to roughly the size of the mapper's own map instead of a multiple of it.
+# The table below was measured on the quadrotor's floorplan1 map with the 3-D
+# ellipsoid (0.45 / 0.25), not with the planar disc configured above, so read
+# the ratios rather than the absolute counts. A planar kernel inflates far less
+# per seed, which shrinks the solid map more than it shrinks the shell, so the
+# peel wins by less here than these numbers suggest -- it still wins. 199k seed
+# voxels:
+#
+#   published            points     x seeds   message    serialise
+#   solid                1009216      5.07     15.4 MiB    5.1 ms
+#   shell, thickness 1    296498      1.49      4.5 MiB    1.9 ms
+#   shell, thickness 2    587630      2.95      9.0 MiB    3.9 ms
+#
+# The peel costs about 1 ms on this map and takes 3 ms off the serialisation,
+# so it is not a trade: it is faster and smaller. It also shrinks the work of
+# every consumer whose cost scales with the point count -- PathCover's does.
+#
+# The caveat: a consumer that asks "is this arbitrary point inside an obstacle"
+# by voxel lookup will read the hollow interior as free. corridor_planning does
+# not -- JPS/DMP search over connected free voxels and PathCover grows convex
+# regions until they meet a point, and neither can get behind the shell. Check
+# before turning this on for a different consumer.
+#
+# On for this workspace: the planner's own grid is 0.15 m (VoxelResolution in
+# corridor_planning/config/global_planning_jackal.yaml), against the 0.1 m voxel
+# this shell is built on, so every shell point still marks a whole planner cell
+# occupied and coarsening can only add occupancy, never open a way through.
+# Set it back to false to compare against the solid map.
+publish_surface_only: true
+
+# Thickness of that shell in voxels. 1 is the thinnest watertight answer and
+# what the numbers above assume. Raise it to leave a thicker skin, e.g. for a
+# consumer whose free-space test is a line rather than a voxel walk, which could
+# otherwise pass between two neighbouring surface points. Ignored while
+# publish_surface_only is off.
+surface_thickness: 1
+
+# ---------------------------------------------------------------------------
+# Online behaviour
+# ---------------------------------------------------------------------------
+# Keep the map across messages instead of rebuilding it from each one.
+#
+#   true  - right for a mapper whose map only grows, e.g. an accumulating global
+#           cloud. Each message pays only for the voxels it adds, and a message
+#           that repeats what the map already holds costs one scan of its points.
+#   false - right for a sliding local window, where voxels also disappear. Every
+#           message is inflated from scratch, so the map can shrink.
+#
+# Call the ~reset service to clear an accumulated map by hand; it also clears
+# itself if the incoming cloud changes frame_id.
+incremental: false
+
+# Threads for voxelising, dilating and serialising. 0 means every core.
+# Leave room for the planners: this node is not the only thing running.
+#
+# 4 is enough to hold 20 Hz with a wide margin: on a 24-core Xeon, a 386k-point
+# floorplan map cost about 6 ms of the 50 ms budget with the quadrotor's 3-D
+# ellipsoid. The disc configured here is a fifth of that kernel (45 cells
+# against 225), so this budget has more room on the Jackal, not less.
+num_threads: 4
+
+# Run the dilation on the GPU when there is one, as nanovoxmap does for its
+# raycasting. The CUDA backend performs the same shifted ORs over the same
+# words in the same order, so it produces a bit-identical map -- nothing
+# downstream can tell which ran, and the inflation_test checks exactly that.
+#
+# The fallback is silent and covers all three ways the GPU can be absent: a
+# build with no CUDA compiler, a machine where no device answers, and a device
+# that errors mid-run (after which this inflater stops asking and stays on the
+# CPU). So leaving this on is safe on a machine that has no GPU.
+#
+# Measured on a Quadro RTX 5000 against a 500k-point pillar map, ellipsoid
+# kernel at the radii above, dilation stage only: 5.1 ms on 4 CPU threads
+# against 1.3 ms on the GPU. Of that 1.3 ms the kernels are 0.2 ms and the rest
+# is the grid crossing PCIe, so the win grows with the kernel radius, not with
+# the map size.
+#
+# Turn it off to leave the GPU entirely to the mapper, or to compare backends.
+use_cuda: true
+
+# Dilations covering fewer voxels than this stay on the CPU. A device round
+# trip costs tens of microseconds of launch and transfer no matter how small
+# the grid is, which a handful of voxels never earns back. This counts the
+# padded window one message dilates, not the whole map, so in incremental mode
+# a message that adds one small patch is served on the CPU while a message that
+# opens up a new room goes to the GPU. 0 sends everything to the device.
+cuda_min_grid_voxels: 1048576
+
+# Ceiling on one occupancy grid, in mebibytes. One voxel is one bit, so 64 MiB
+# covers half a billion voxels: at 0.1 m that is a 50 km cube. It exists to turn
+# a stray point far from the map into an error instead of an allocation.
+max_grid_mib: 64
+
+# ---------------------------------------------------------------------------
+# Filters
+# ---------------------------------------------------------------------------
+# Discard input points outside this box before voxelising, so they never become
+# obstacles at all. Only the z floor is doing work here; x and y are left wide.
+#
+# min.z = 0.05 rejects the ground plane. The Velodyne sits 0.366 m above the
+# floor with a 0.01 m noise sigma, so ground returns land at z = 0 +/- 0.01 and
+# a 0.05 m floor is five sigma clear of them. Without it every ground return
+# inflates into a 0.38 m disc and the whole drivable surface reads as occupied.
+#
+# The value matches ObstacleZMin in corridor_planning/config/
+# global_planning_jackal.yaml on purpose: that node re-slices this cloud to
+# [0.05, 0.80] before projecting it, so anything dropped here was going to be
+# dropped there. Cutting it here means it is never dilated or serialised.
+#
+# Voxel centres sit at (index + 0.5) * resolution, so the lowest surviving layer
+# is centred at exactly 0.05 and lands on that downstream threshold. It does not
+# matter which way the comparison falls: obstacles here are metres tall, so the
+# layers at 0.15, 0.25, ... carry the same xy footprint into the projection.
+input_filter:
+  enable: true
+  min: [-1000.0, -1000.0, 0.05]
+  max: [1000.0, 1000.0, 1000.0]
+
+# Discard inflated voxels whose centre falls outside this box. Enable it to stop
+# inflation from leaking past the edge of a bounded map, and to bound how much
+# memory an accumulating map can take; the values below match the 26 x 20 x 3 m
+# map used by the simulation launch files.
+output_bounds:
+  enable: false
+  min: [-13.0, -10.0, 0.0]
+  max: [13.0, 10.0, 3.0]

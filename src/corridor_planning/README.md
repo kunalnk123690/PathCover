@@ -91,7 +91,6 @@ uses [`config/global_planning_jackal.yaml`](config/global_planning_jackal.yaml).
 | `InitialPose` / `GoalPose` | Start, and the initial goal before an RViz nav goal arrives |
 | `horizon` | **`max_iter`** — caps how far the corridor extends per cycle. `6` is the default for this quadrotor demo; `1` gives a single look-ahead polytope per cycle |
 | `FilterRadius` | Discard cloud points within this XY radius of the robot. Guards the seed's interiority against self-returns |
-| `DeflationFactor` | Shrink every half-space inward by this many metres (robot radius / safety margin). `0` disables |
 | `DmPotentialRadius`, `DmPSearchRadius` | Distance-map planner potential and search radii |
 
 `MapLowerBound` / `MapUpperBound` and `VoxelResolution` are **per-world** and must be updated for
@@ -176,12 +175,17 @@ std::vector<Eigen::Vector3d> seeds;            // one per polytope, plus the loc
 std::vector<std::vector<int>> decay;
 
 PathCover::pathCover<double, 3>(cloud, path, A_bound, b_bound, As, bs, seeds, decay,
-                                /*offset=*/0.0, /*max_horizon=*/6, /*alpha=*/0.01);
+                                /*max_horizon=*/6, /*alpha=*/0.01);
 ```
 
-Both take `cloud` and `path` as `std::vector<Eigen::Matrix<T, Dim, 1>>`. `offset` is the same
-inward deflation as `DeflationFactor`; `pts_remaining` / `decay` record how many obstacle points
-survive each cut, which is what the benchmark topics publish.
+Both take `cloud` and `path` as `std::vector<Eigen::Matrix<T, Dim, 1>>`. `pts_remaining` / `decay`
+record how many obstacle points survive each cut, which is what the benchmark topics publish.
+
+Neither shrinks the polytopes it returns. RISP seeds each region on the previous region's
+boundary and relies on that seed being strictly interior, so deflating a region after the fact
+can put its own seed outside it and break the chain PathCover's completeness argument rests on.
+Apply robot-radius clearance downstream instead — `trajectory_server`'s `SafetyMargin` does this
+at optimization time, where an over-shrunk corridor is detected rather than silently propagated.
 
 To feed your own downstream planner instead, subscribe to `/quadrotor/polytopes` — see the
 [polytope_msgs README](../polytope_msgs/README.md) for the memory layout.

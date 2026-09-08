@@ -1,0 +1,39 @@
+{
+    "name": "NanoVoxMap Development Container",
+    "privileged": true,
+    "remoteUser": "nanovox_map",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "workspaceFolder": "/home/nanovox_map/nanovox_map_ws",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/home/nanovox_map/nanovox_map_ws,type=bind",
+    "customizations": {
+        "vscode": {
+            "extensions":[
+                "ms-vscode.cpptools",
+                "ms-vscode.cpptools-themes",
+                "twxs.cmake",
+                "donjayamanne.python-extension-pack",
+                "eamodio.gitlens",
+                "ms-iot.vscode-ros"
+            ]
+        }
+    },
+    "containerEnv": {
+        "DISPLAY": "unix:0"
+    },
+    "runArgs": [
+        "--net=host",
+        "--pid=host",
+        "--ipc=host",
+        "-e", "DISPLAY=${env:DISPLAY}",
+        "-v", "/dev/input:/dev/input",
+        "--runtime=nvidia",
+        "-e", "NVIDIA_DRIVER_CAPABILITIES=all",
+        "--gpus", "all"
+    ],
+    "mounts": [
+        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
+        "source=/dev/dri,target=/dev/dri,type=bind,consistency=cached"
+    ]
+}

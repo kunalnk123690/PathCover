@@ -1,15 +1,13 @@
-# Quadrotor planning parameters
-# MapTopic:                   "/fast_mapping/Voxel_map"
-MapTopic:                   "/nanovoxmap/Voxel_map"
+# MapTopic:                   "/nanovoxmap/Voxel_map"
+MapTopic:                   "/occupancy_inflation/inflated_cloud"
 GroundTruthTopic:           "/quadrotor/ground_truth"
 VelodynePoseTopic:          "/velodyne/ground_truth"
 FilteredCloudTopic:         "/filtered_cloud"
 
 
-## floorplan1_static.world
-DeflationFactor:            0.0
-VoxelResolution:            0.9
-FilterRadius:               0.5
+# floorplan1_static.world
+VoxelResolution:            0.25
+FilterRadius:               0.0
 MapLowerBound:              [-20.0, -10.0, -0.3]
 MapUpperBound:              [20.0, 10.0, 2.2]
 InitialPose:                [0.0, 0.0, 0.02]

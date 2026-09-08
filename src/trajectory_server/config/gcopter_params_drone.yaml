@@ -11,11 +11,11 @@ thrust_min:                2.0      # min thrust (N)
 thrust_max:                10.0     # max thrust (N)
 
 # --- Penalty weights for the soft constraints above (GCOPTER penaltyWeights) ---
-weight_pos:                10000.0
+weight_pos:                100.0
 weight_vel:                100.0
-weight_omg:                10000.0
-weight_theta:              10000.0
-weight_thrust:             10000.0
+weight_omg:                10.0
+weight_theta:              100.0
+weight_thrust:             1.0
 
 # --- Physical parameters (GCOPTER physicalParams / flatness map) ---
 vehicle_mass:               0.716     # kg
@@ -39,7 +39,7 @@ rel_cost_tol:                1.0e-4 # L-BFGS relative cost convergence tolerance
 cost_order:                   3
 
 # --- Corridor safety margin ---
-SafetyMargin:                 0.7    # meters; shrinks each corridor half-space inward
+SafetyMargin:                 0.5    # meters; shrinks each corridor half-space inward
                                       # before optimization (same role as
                                       # trajectory_server's SafetyMargin)
 
@@ -48,5 +48,5 @@ ReplanPeriod:                0.5    # seconds between replans
 GoalReachedThreshold:        0.2    # meters
 
 # --- Yaw control (identical behavior to trajectory_server) ---
-YawDotMax:                  3.14159265/2
+YawDotMax:                   1.5707963267948966
 LowSpeedThreshold:           0.1

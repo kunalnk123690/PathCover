@@ -23,7 +23,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: PointCloud2
+    SyncSource: Inflated_map
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -247,8 +247,8 @@ Visualization Manager:
     - Alpha: 0.20000000298023224
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 1.975000023841858
-        Min Value: -0.02500000037252903
+        Max Value: 2.5250003337860107
+        Min Value: -0.07500000298023224
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -267,35 +267,35 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.05000000074505806
       Style: Boxes
-      Topic: /fast_mapping/Voxel_map
+      Topic: /nanovoxmap/Voxel_map
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
-    - Alpha: 0.20000000298023224
+    - Alpha: 0.10000000149011612
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 2.4250001907348633
-        Min Value: -0.02500000037252903
+        Max Value: 2.549999952316284
+        Min Value: -0.05000000074505806
         Value: true
       Axis: Z
       Channel Name: intensity
       Class: rviz/PointCloud2
       Color: 255; 255; 255
-      Color Transformer: AxisColor
+      Color Transformer: Intensity
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Min Color: 0; 0; 0
-      Name: PointCloud2
+      Name: Inflated_map
       Position Transformer: XYZ
       Queue Size: 10
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.05000000074505806
+      Size (m): 0.10000000149011612
       Style: Boxes
-      Topic: /nanovoxmap/Voxel_map
+      Topic: /occupancy_inflation/inflated_cloud
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -328,7 +328,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 32.43962478637695
+      Distance: 30.088661193847656
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -336,17 +336,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -2.359326124191284
-        Y: 4.478172779083252
-        Z: -4.335354804992676
+        X: -6.515288829803467
+        Y: 3.911595344543457
+        Z: -4.862624168395996
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.0247968435287476
+      Pitch: 1.4347964525222778
       Target Frame: <Fixed Frame>
-      Yaw: 4.740475654602051
+      Yaw: 4.675480365753174
     Saved: ~
 Window Geometry:
   Displays:

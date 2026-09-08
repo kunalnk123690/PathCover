@@ -42,8 +42,8 @@ stationary.
 Each incoming `Polytope` is converted from $Ay \le b$ to GCOPTER's
 $n^\top y + d \le 0$ form, with `b` shrunk by `SafetyMargin * ||A_row||` — scaling by the row norm
 means the inward shift is exactly `SafetyMargin` metres whether or not the rows are normalized.
-This is applied *on top of* `corridor_planning`'s `DeflationFactor`; the two stack, so setting
-both means the corridor is shrunk twice.
+`corridor_planning` publishes its corridor unshrunk, so this is the only place robot-radius
+clearance is applied and `SafetyMargin` has to cover the full circumscribed footprint.
 
 A `Polytopes` message with no polytopes, or without a goal matching the selected dimension, is
 rejected and the node holds position.
@@ -122,6 +122,16 @@ In the Jackal build the corresponding topics default to `/jackal/polytopes`,
 `/jackal/ground_truth`, and `/jackal_velocity_controller/cmd_vel`; the command type is
 `geometry_msgs/Twist`. Its additional feasibility parameters are `a_max` and `curvature_eps`, and
 its tracking gains are `k_x`, `k_y`, `k_theta`, `k_align`, and `HeadingAlignTolerance`.
+
+The planar build accepts corridors of either dimension. It reads the coefficients-per-row from
+`A.size() / b.size()` rather than assuming a planar corridor, because `corridor_planning`'s
+constraint matrix is hardcoded to three columns and so publishes 3-D polytopes even for a ground
+robot. A 3-D corridor is reduced to the planar one the optimizer needs by taking its horizontal
+cross-section at `CorridorSliceHeight` (default `0.0`): substituting that `z` into
+$a_x x + a_y y + a_z z \le b$ leaves $a_x x + a_y y \le b - a_z z$. Faces whose normal is purely
+vertical carry no planar information and are dropped; if one of them is *violated* at that height
+the polytope does not reach it, and the corridor is rejected rather than silently truncated.
+Set `CorridorSliceHeight` to the height the corridor was generated around.
 
 ## Swapping this out
 

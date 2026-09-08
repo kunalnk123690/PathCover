@@ -23,17 +23,6 @@ inline void qConvexHull(Eigen::Matrix<T, -1, -1, Eigen::RowMajor> &Points,
 }    
 
 
-template <typename T, int Dim>
-inline void deflatePolyhedra(const Eigen::Matrix<T, -1, Dim> &A, 
-                             Eigen::Matrix<T, -1, 1> &b,
-                             T offset) {
-
-    for (int i = 0; i < b.size(); ++i) {
-        b(i) = b(i) - offset * A.row(i).norm();
-    }
-}
-
-
 template<typename T, const int dim>
 inline void noredund(Eigen::Matrix<T, -1, dim> &A, 
                      Eigen::Matrix<T, -1, 1> &b, 
@@ -90,7 +79,6 @@ inline void RISP(const std::vector<Eigen::Matrix<T, dim, 1>> &obstacle_pts,
                  Eigen::Matrix<T, -1, dim> &A, 
                  Eigen::Matrix<T, -1, 1> &b,
                  std::vector<int> &pts_remaining,
-                 double offset = 0,
                  T alpha = T(0.01)) {
     assert(alpha > T(0) && alpha < T(1) && "RISP: alpha must lie in (0, 1)");
 
@@ -149,9 +137,6 @@ inline void RISP(const std::vector<Eigen::Matrix<T, dim, 1>> &obstacle_pts,
 
     // Remove redundant constraints
     noredund<T, dim>(A, b, seed);
-    if (offset > 0) {
-        deflatePolyhedra<T, dim>(A, b, offset);
-    }
 }
 
 
@@ -198,7 +183,6 @@ inline void pathCover(const std::vector<Eigen::Matrix<T, Dim, 1>> &obstacle_pts,
                       std::vector<Eigen::Matrix<T, -1, 1>> &b,
                       std::vector<Eigen::Matrix<T, Dim, 1>> &seed, 
                       std::vector<std::vector<int>> &all_pts_remaining,
-                      double offset = 0,
                       int max_horizon = 1,
                       T alpha = T(0.01)) {
 
@@ -207,7 +191,7 @@ inline void pathCover(const std::vector<Eigen::Matrix<T, Dim, 1>> &obstacle_pts,
     Eigen::Matrix<T, Dim, 1> intersection = path[0]; // Initialize to prevent garbage data
     std::vector<int> pts_remaining;
 
-    RISP<T, Dim>(obstacle_pts, path[0], A_bound, b_bound, A_, b_, pts_remaining, offset, alpha);
+    RISP<T, Dim>(obstacle_pts, path[0], A_bound, b_bound, A_, b_, pts_remaining, alpha);
     A.push_back(A_);
     b.push_back(b_);
     seed.push_back(path[0]);
@@ -222,7 +206,7 @@ inline void pathCover(const std::vector<Eigen::Matrix<T, Dim, 1>> &obstacle_pts,
         } 
         else {
             intersection = computePolyhedraIntersection<T, Dim>(A_, b_, intersection, path[i]);
-            RISP<T, Dim>(obstacle_pts, intersection, A_bound, b_bound, A_, b_, pts_remaining, offset, alpha);
+            RISP<T, Dim>(obstacle_pts, intersection, A_bound, b_bound, A_, b_, pts_remaining, alpha);
             A.push_back(A_);
             b.push_back(b_);
             seed.push_back(intersection);

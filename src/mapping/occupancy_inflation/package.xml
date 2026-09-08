@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>occupancy_inflation</name>
+  <version>0.2.0</version>
+  <description>
+    Obstacle inflation for online planning: subscribes to a PointCloud2,
+    voxelises it into a dense bitset, dilates the occupied voxels with word
+    parallel morphology and republishes the result. Accumulates across messages
+    so a map that keeps growing only costs what it adds. No PCL dependency:
+    point clouds are read and written through include/occupancy_inflation/eigen_conversions.h.
+  </description>
+
+  <maintainer email="kunalnk@udel.edu">kunal</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>roscpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+  <build_depend>eigen</build_depend>
+  <build_export_depend>eigen</build_export_depend>
+
+</package>

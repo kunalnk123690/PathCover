@@ -108,6 +108,12 @@ namespace trajectory_server
         // where the footprint radius belongs.
         double safetyMargin_;
 
+        // World z at which a 3-D corridor is sliced into the planar corridor
+        // the optimizer works with. Only used when the incoming polytopes
+        // carry three coefficients per row (which is what corridor_planning
+        // publishes); a natively planar corridor ignores it.
+        double corridorSliceHeight_;
+
         // --- Receding horizon params ---
         double replanPeriod_;
         double goalReachedThreshold_;

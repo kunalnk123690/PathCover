@@ -45,10 +45,14 @@
 
 
   <!-- nanovoxmap -->
-  <node name="nanovoxmap_node" pkg="nanovoxmap" type="nanovoxmap_node" output="screen">
-    <rosparam file="$(find nanovoxmap)/config/mapping_jackal.yaml"/>
-  </node>
+  <node name="nanovoxmap_node" pkg="nanovoxmap_ros" type="nanovoxmap_ros_node" output="screen">
+    <rosparam file="$(find nanovoxmap_ros)/config/mapping_jackal.yaml"/>
+  </node>  
 
+  <!-- Map inflation -->
+  <node pkg="occupancy_inflation" type="occupancy_inflation_node" name="occupancy_inflation_node" output="screen">
+    <rosparam file="$(find occupancy_inflation)/config/inflation_params_jackal.yaml"/>
+  </node>  
 
   <!-- Corridor Planning (planar) -->
   <node name="corridor_planning_node" pkg="corridor_planning" type="corridor_planning_node" output="screen">

@@ -3,7 +3,6 @@
   <arg name="verbose" value="true"/>
   <arg name="use_sim_time" value="true"/>
   <arg name="debug" value="false" />
-  <arg name="rosbag_file" default="floorplan2_static.bag" />
   <arg name="computation_time_file" default="computation_time.bag" />
   <arg name="world_name" value="$(find quadrotor_description)/worlds/floorplan1/floorplan1_static.world" />
 
@@ -34,12 +33,6 @@
   </node>
 
 
-  <!-- Fast Mapping -->
-  <!-- <node name="fast_mapping_node" pkg="fast_mapping" type="fast_mapping_node" output="screen">
-    <rosparam file="$(find fast_mapping)/config/mapping.yaml" command="load" />
-  </node>  -->
-
-
   <!-- Corridor Planning -->
   <node name="corridor_planning_node" pkg="corridor_planning" type="corridor_planning_node" output="screen">
     <rosparam file="$(find corridor_planning)/config/global_planning_drone.yaml" command="load" />
@@ -47,17 +40,20 @@
 
 
   <!-- nanovoxmap -->
-  <node name="nanovoxmap_node" pkg="nanovoxmap" type="nanovoxmap_node" output="screen">
-    <rosparam file="$(find nanovoxmap)/config/mapping_drone.yaml"/>
+  <node name="nanovoxmap_node" pkg="nanovoxmap_ros" type="nanovoxmap_ros_node" output="screen">
+    <rosparam file="$(find nanovoxmap_ros)/config/mapping_drone.yaml"/>
   </node>
+
+  <!-- Map inflation -->
+  <node pkg="occupancy_inflation" type="occupancy_inflation_node" name="occupancy_inflation_node" output="screen">
+    <rosparam file="$(find occupancy_inflation)/config/inflation_params_drone.yaml"/>
+  </node>  
 
   <!-- Trajectory Planner -->
   <node name="trajectory_server_node" pkg="trajectory_server" type="trajectory_server_node" output="screen">
     <rosparam file="$(find trajectory_server)/config/gcopter_params_drone.yaml" command="load" />
   </node>
 
-  <!-- Record data to rosbag -->
-  <!-- <node name="vision60_data_recorder" pkg="rosbag" type="record" args="-a -O $(find trajectory_server)/bag/$(arg rosbag_file)"/> -->
 
   <!-- Show in Rviz -->
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find quadrotor_description)/config/quadrotor_visual.rviz"/>

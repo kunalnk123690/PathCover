@@ -138,7 +138,12 @@ This brings up Gazebo, the quadrotor, the mapper, obstacle inflation, corridor g
 
 Both examples now pass the occupied map through `occupancy_inflation` before planning: `/nanovoxmap/Voxel_map` → `/occupancy_inflation/inflated_cloud` → `corridor_planning`. Mapping settings live in [`src/mapping/nanovoxmap_ros/config/`](src/mapping/nanovoxmap_ros/config), and robot clearance is configured in [`src/mapping/occupancy_inflation/config/`](src/mapping/occupancy_inflation/config). The shipped inflation radii (`radius_xy` / `radius_z`) are `0.45` / `0.25` m for the quadrotor and `0.38` / `0.0` m for Jackal.
 
-Corridor generation no longer applies `DeflationFactor`. The trajectory optimizer still shrinks the corridor by `SafetyMargin`, which adds clearance on top of map inflation; tune the two together. For Jackal, the trajectory server also accepts 3-D corridors by taking a horizontal cross-section at `CorridorSliceHeight` (default `0.0` m).
+Corridor generation no longer applies `DeflationFactor`. Map inflation provides vehicle-body
+clearance; the trajectory optimizer's `SafetyMargin` adds optional standoff by shrinking only the
+copy of each corridor polytope used by its soft containment penalty. The waypoint decomposition
+continues to use the original corridor, and the requested margin is capped in narrow polytopes and
+overlaps so it cannot collapse them. For Jackal, the trajectory server also accepts 3-D corridors
+by taking a horizontal cross-section at `CorridorSliceHeight` (default `0.0` m).
 
 Related algorithms are detailed in [this paper](https://arxiv.org/abs/2608.05586).
 
@@ -154,9 +159,9 @@ All algorithms, parameters, ROS interfaces, and instructions for using PathCover
 | [__corridor_planning__](src/corridor_planning) | __The core contribution.__ Header-only [RISP + PathCover](src/corridor_planning/include/planner/PathCover.hpp), the JPS/DMP front end, the ROS node, and RViz visualization. The system-level launch file and the planning parameters live here. See its [README](src/corridor_planning/README.md) |
 | [__nanovoxmap_ros__](src/mapping/nanovoxmap_ros) | ROS Noetic wrapper around the embedded [NanoVoxMap core](src/mapping/nanovoxmap_ros/nanovoxmap): sparse voxel mapping, an optional signed ESDF, and CUDA acceleration. The per-robot mapping configs live here. See its [README](src/mapping/nanovoxmap_ros/README.md) |
 | [__occupancy_inflation__](src/mapping/occupancy_inflation) | Voxel obstacle inflation before path search and corridor generation, with planar or volumetric radii, optional boundary-shell output, and CPU/CUDA backends. See its [README](src/mapping/occupancy_inflation/README.md) |
-| [__trajectory_server__](src/trajectory_server) | Receding-horizon trajectory optimizer. GCOPTER/MINCO over the corridor, with a generalized min-jerk (degree 5) / min-snap (degree 7) solver. See its [README](src/trajectory_server/README.md) |
+| [__trajectory_server__](src/trajectory_server) | Receding-horizon trajectory optimizer. GCOPTER/MINCO over the active remainder of the corridor, with a generalized min-jerk (degree 5) / min-snap (degree 7) solver and a per-solve iteration cap. See its [README](src/trajectory_server/README.md) |
 | [__polytope_msgs__](src/polytope_msgs) | `Polytope` (`A`, `b`, `seed`) and `Polytopes` (corridor + goal) messages — the interface between corridor generation and any downstream planner. See its [README](src/polytope_msgs/README.md) |
-| [__quadrotor_sim__](src/quadrotor_sim) | The test vehicle: a URDF with a VLP-16 lidar, a geometric controller plugin, ground-truth odometry, and the office-like world it flies in. See its [README](src/quadrotor_sim/README.md) |
+| [__quadrotor_sim__](src/quadrotor_sim) | The test vehicle: a URDF with a VLP-16 lidar, a geometric controller plugin that also publishes pose/velocity/acceleration state, ground-truth odometry, and the office-like world it flies in. See its [README](src/quadrotor_sim/README.md) |
 | [__jackal_description__](src/jackal_description) | The differential-drive example: Jackal URDF, controllers, sensors, ground-truth TF/odometry, RViz setup, and the bundled Gazebo worlds. See its [README](src/jackal_description/README.md) |
 | [__third_party__](src/third_party) | [JPS3D + distance-map planner](src/third_party/jps_lib) for the global path search, and [Qhull](src/third_party/qhull_lib) for dual-space redundancy removal. See its [README](src/third_party/README.md) |
 

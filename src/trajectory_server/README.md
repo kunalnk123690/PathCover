@@ -18,11 +18,12 @@ uses 2-D at 50 Hz. The control loop lives in
 [`trajectory_server.cpp`](src/trajectory_server.cpp); `trajectory_server_node.cpp` is the shared
 ROS entry point.
 
-1. **Replan** every `ReplanPeriod` seconds. Boundary conditions are re-seeded from the robot's
-   *actual* current state each time — position and velocity from odometry, acceleration (and
-   jerk, for the snap-cost case) set to zero rather than carried forward from the previous
-   solve, so a solve's own artifacts are never fed back in as the next replan's hard boundary
-   condition.
+1. **Replan** every `ReplanPeriod` seconds. The quadrotor re-seeds position, velocity, and
+   acceleration from `quadrotor_msgs/State`; Jackal re-seeds position and velocity from odometry
+   and uses zero acceleration. Snap-cost trajectories use zero initial jerk. Nothing is sampled
+   from the previous solve, so its artifacts cannot become the next replan's hard boundary
+   conditions. Boundary velocity and acceleration are projected back into the configured dynamic
+   envelope if a measurement falls outside it.
 2. **Terminal state** is the corridor's `goal` field — the local target where the reference path
    exits the last polytope — with zero terminal velocity/acceleration. Because only the near-term
    part of each solve is executed before the next replan, the terminal condition mostly shapes
@@ -31,7 +32,8 @@ ROS entry point.
    `quadrotor_msgs/TrajectoryCommand`; Jackal applies a unicycle tracking law and publishes
    `geometry_msgs/Twist`.
 4. **Hold** if there is no corridor yet, or if the first solve has not succeeded. A failed
-   replan with a previously valid trajectory keeps using the old one.
+   replan with a previously valid trajectory keeps using the old one. Each solve is capped by
+   `max_iterations`, preventing a pathological corridor from stalling the control loop.
 
 For the quadrotor, yaw is generated separately from the desired horizontal velocity direction, rate-limited by
 `YawDotMax` and frozen below `LowSpeedThreshold` so the vehicle does not spin while nearly
@@ -40,10 +42,20 @@ stationary.
 ### Corridor handling
 
 Each incoming `Polytope` is converted from $Ay \le b$ to GCOPTER's
-$n^\top y + d \le 0$ form, with `b` shrunk by `SafetyMargin * ||A_row||` — scaling by the row norm
-means the inward shift is exactly `SafetyMargin` metres whether or not the rows are normalized.
-`corridor_planning` publishes its corridor unshrunk, so this is the only place robot-radius
-clearance is applied and `SafetyMargin` has to cover the full circumscribed footprint.
+$n^\top y + d \le 0$ form and retained unshrunk. Before each solve, the node finds the furthest
+polytope in corridor order that contains the robot and drops the already-traversed prefix. If the
+robot is outside every polytope, it starts at the closest one by aggregate half-space overshoot.
+This keeps a reused corridor from pulling the trajectory backward through polytopes the robot has
+already passed.
+
+The active corridor has two roles. Its original geometry parameterizes MINCO waypoints and is
+checked for non-empty polytopes and consecutive overlaps. A separate penalty copy is shifted
+inward by `SafetyMargin` to create standoff from corridor walls. The shift is capped per polytope
+to 80% of the minimum of its own inscribed radius and each adjacent overlap radius, so the penalty
+regions and their handoffs retain a strict interior. Map inflation already supplies clearance for the robot's
+body; `SafetyMargin` is extra clearance and remains a soft trajectory penalty, not a hard safety
+guarantee. When a requested margin is capped, or a raw corridor is degenerate/non-overlapping,
+the node reports the relevant polytope in its diagnostics.
 
 A `Polytopes` message with no polytopes, or without a goal matching the selected dimension, is
 rejected and the node holds position.
@@ -57,11 +69,14 @@ Quadrotor uses [`config/gcopter_params_drone.yaml`](config/gcopter_params_drone.
 
 | Parameter | Meaning |
 |---|---|
-| `OdometryTopic` | Robot odometry — supplies the replan's initial position and velocity |
 | `PolyhedraTopic` | Input corridor (`polytope_msgs/Polytopes`) |
-| `TrajectoryTopic` | Output setpoint (`quadrotor_msgs/TrajectoryCommand`) |
+| `StateTopic` | Quadrotor state — supplies measured position, velocity, and acceleration (`quadrotor_msgs/State`) |
+| `TrajectoryTopic` | Quadrotor output setpoint (`quadrotor_msgs/TrajectoryCommand`) |
+| `OdometryTopic` | Jackal odometry — supplies pose and velocity |
+| `CmdVelTopic` | Jackal velocity command output (`geometry_msgs/Twist`) |
 
-For Jackal, `CmdVelTopic` replaces `TrajectoryTopic`; `OdomTwistInBodyFrame` declares the frame of
+`StateTopic` and `TrajectoryTopic` are required only by the quadrotor build; `OdometryTopic` and
+`CmdVelTopic` are required only by Jackal. For Jackal, `OdomTwistInBodyFrame` declares the frame of
 the odometry twist.
 
 ### Quadrotor dynamic feasibility bounds
@@ -94,16 +109,18 @@ weight.
 |---|---|---|
 | `cost_order` | `3` | `3` = minimum jerk, degree-5 pieces; `4` = minimum snap, degree-7 (smoother, more expensive, adds initial/terminal jerk boundary conditions). Any other value is fatal at startup |
 | `weight_time` | `100.0` | $\rho$, the time-regularization weight — the aggressiveness knob |
-| `length_per_piece` | `2.0` | Desired path length per MINCO piece (m); sets the piece count |
+| `PiecesPerPolytope` | `1` | Fixed number of MINCO pieces per active corridor polytope; `1` places each interior waypoint in a consecutive overlap, limiting room for loops; `0` enables length-based allocation |
+| `length_per_piece` | `2.0` (quadrotor), `1.0` (Jackal) | Desired path length per MINCO piece (m), used only when `PiecesPerPolytope` is `0` |
 | `integral_resolution` | `16` | Integration steps per piece for the penalty integral |
 | `smoothing_eps` | `0.01` | Penalty smoothing factor |
 | `rel_cost_tol` | `1.0e-4` | L-BFGS relative cost convergence tolerance |
+| `max_iterations` | `1000` | L-BFGS iteration cap for one solve; `0` is uncapped. Reaching the cap rejects the partial result and retains the previous valid trajectory |
 
 ### Receding horizon, safety, and yaw
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `SafetyMargin` | `0.3` | Inward shrink of each corridor half-space before optimization (m) |
+| `SafetyMargin` | `0.3` (`0.15` in shipped configs) | Requested inward offset of the soft-penalty corridor (m); capped in narrow polytopes/overlaps and additive to map inflation |
 | `ReplanPeriod` | `0.5` | Seconds between replans |
 | `GoalReachedThreshold` | `0.2` | Goal tolerance (m); inside it the node stops publishing setpoints |
 | `YawDotMax` | `π` | Yaw rate limit (rad/s) |
@@ -114,7 +131,7 @@ weight.
 | Direction | Topic | Type |
 |---|---|---|
 | sub | `PolyhedraTopic` (`/quadrotor/polytopes`) | `polytope_msgs/Polytopes` |
-| sub | `OdometryTopic` (`/quadrotor/ground_truth`) | `nav_msgs/Odometry` |
+| sub | `StateTopic` (`/quadrotor/state`) | `quadrotor_msgs/State` (world-frame pose, linear velocity, and linear acceleration; body-frame angular velocity) |
 | pub | `TrajectoryTopic` (`/quadrotor/trajectory`) | `quadrotor_msgs/TrajectoryCommand` (position → snap, yaw, yaw rate) |
 | pub | `/colored_trajectory` | `nav_msgs/Path` — the solved trajectory sampled at 20 Hz, for RViz |
 

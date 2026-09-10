@@ -1,5 +1,9 @@
-# --- Quadrotor topics ---
-OdometryTopic:            "/quadrotor/ground_truth"
+# --- Topics ---
+# quadrotor_msgs/State from quadrotor_gazebo_plugin, not the p3d ground_truth
+# odometry: every replan seeds its initial boundary condition from the measured
+# position, velocity AND acceleration, and nav_msgs/Odometry has no
+# acceleration field.
+StateTopic:               "/quadrotor/state"
 TrajectoryTopic:           "/quadrotor/trajectory"
 PolyhedraTopic:             "/quadrotor/polytopes"
 
@@ -11,11 +15,11 @@ thrust_min:                2.0      # min thrust (N)
 thrust_max:                10.0     # max thrust (N)
 
 # --- Penalty weights for the soft constraints above (GCOPTER penaltyWeights) ---
-weight_pos:                100.0
+weight_pos:                10000.0
 weight_vel:                100.0
-weight_omg:                10.0
-weight_theta:              100.0
-weight_thrust:             1.0
+weight_omg:                10000.0
+weight_theta:              10000.0
+weight_thrust:             10000.0
 
 # --- Physical parameters (GCOPTER physicalParams / flatness map) ---
 vehicle_mass:               0.716     # kg
@@ -29,8 +33,16 @@ speed_eps:                  0.001   # speed smoothing factor (avoids div-by-zero
 weight_time:                 100.0   # rho, time-regularization weight
 smoothing_eps:               0.01   # penalty smoothing factor
 integral_resolution:         16      # integration steps per piece for penalty integral
-length_per_piece:            2.0   # desired path length per MINCO piece (m)
+length_per_piece:            2.0   # desired path length per MINCO piece (m); only used
+                                    # when PiecesPerPolytope is 0
+PiecesPerPolytope:           1      # MINCO pieces per corridor polytope. 1 puts every
+                                    # interior waypoint in an overlap between consecutive
+                                    # polytopes -- the tightest parameterization, least room
+                                    # to wander. Raise to 2 if the result is too rigid;
+                                    # 0 restores length-based allocation.
 rel_cost_tol:                1.0e-4 # L-BFGS relative cost convergence tolerance
+max_iterations:              1000   # L-BFGS iteration cap per solve; hitting it fails the
+                                    # replan and the previous trajectory is kept. 0 = uncapped.
 
 # What derivative the smoothness cost minimizes, and the resulting polynomial
 # degree per piece: 3 = minimum jerk, degree-5 (default); 4 = minimum snap,
@@ -39,9 +51,11 @@ rel_cost_tol:                1.0e-4 # L-BFGS relative cost convergence tolerance
 cost_order:                   3
 
 # --- Corridor safety margin ---
-SafetyMargin:                 0.5    # meters; shrinks each corridor half-space inward
-                                      # before optimization (same role as
-                                      # trajectory_server's SafetyMargin)
+# Pushes the trajectory away from the corridor wall (in meters)
+# Not guaranteed because GCOPTER is a soft-constraint optimizer, and constraints are guranteed to be 
+# satisfied by the MINCO waypoints but not by the continuous trajectory between them. The corridor 
+# is already collision-free for the body; this is purely how much extra clearance to leave.
+SafetyMargin:                 0.15
 
 # --- Receding horizon ---
 ReplanPeriod:                0.5    # seconds between replans

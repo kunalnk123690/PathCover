@@ -11,6 +11,7 @@
 #include <geometry_msgs/TransformStamped.h>
 #include <nav_msgs/Odometry.h>
 #include "quadrotor_msgs/TrajectoryCommand.h"
+#include "quadrotor_msgs/State.h"
 #include "GeometricController.hpp"
 
 /**
@@ -28,7 +29,9 @@ namespace gazebo {
  * It inherits from `gazebo::ModelPlugin` to interact with the simulation environment and `GeometricController`
  * to implement the control logic. The plugin subscribes to `quadrotor_msgs::TrajectoryCommand` messages to receive
  * desired trajectory setpoints. It then calculates the required motor forces and body torques and applies them to the
- * quadrotor's base link. Additionally, it publishes the ground truth odometry of the vehicle.
+ * quadrotor's base link. Additionally, it publishes the vehicle's true state (pose, world-frame
+ * linear velocity and world-frame linear acceleration of the base link) as a `quadrotor_msgs::State`,
+ * which lets a planner seed a replan from the actual state rather than assuming it.
  */
 class QuadrotorGazeboPlugin : public ModelPlugin {
     public:
@@ -56,6 +59,7 @@ class QuadrotorGazeboPlugin : public ModelPlugin {
         physics::ModelPtr model_;                                       ///< Pointer to the model in Gazebo.
         std::shared_ptr<ros::NodeHandle> rosNode_;                      ///< ROS node handle.
         ros::Subscriber trajectorySub_;                                 ///< ROS subscriber for pose commands.
+        ros::Publisher statePub_;                                       ///< ROS publisher for the true vehicle state.
         ros::CallbackQueue rosQueue_;                                   ///< Custom ROS callback queue.
         std::thread rosQueueThread_;                                    ///< Thread for processing the ROS callback queue.
         event::ConnectionPtr update_connection_;                        ///< Gazebo update connection pointer.
@@ -63,7 +67,9 @@ class QuadrotorGazeboPlugin : public ModelPlugin {
         // --- Configuration Parameters from SDF ---
         std::string frame_;                                             ///< Name of the link to apply forces/torques.
         std::string trajectoryTopicName_;                               ///< Topic name for trajectory commands.
-        std::string groundTruthTopicName_;                              ///< Topic name for ground truth odometry.
+        std::string stateTopicName_;                                    ///< Topic name for the published true state.
+        double statePublishPeriod_;                                     ///< Minimum sim-time gap between state messages (s); <= 0 publishes every step.
+        double accelFilterTau_;                                         ///< First-order low-pass time constant for the acceleration estimate (s); <= 0 disables filtering.
 
         // --- State & Synchronization ---
         quadrotor_msgs::TrajectoryCommand latest_cmd_;                        ///< Stores the latest received pose command.
@@ -86,6 +92,16 @@ class QuadrotorGazeboPlugin : public ModelPlugin {
          * and applies these forces and torques to the quadrotor model. It also publishes the ground truth state.
          */
         void OnUpdate(const common::UpdateInfo &info);
+
+        /**
+         * @brief Estimates the base link's acceleration and publishes its true state.
+         * @param[in] link The link whose state is published (the wrench frame).
+         * @param[in] simTime Current simulation time, used both for the finite difference and the header stamp.
+         * @details Called once per physics step, before and independently of the control law, so the
+         * state stream starts as soon as the simulation does. The acceleration estimator is advanced
+         * at every step even when the message itself is throttled to `statePublishPeriod_`.
+         */
+        void PublishState(const physics::LinkPtr &link, const common::Time &simTime);
 
         /**
          * @brief Thread function for the ROS callback queue.
@@ -115,6 +131,14 @@ class QuadrotorGazeboPlugin : public ModelPlugin {
         double yaw_ddot_;                                                   ///< Desired yaw acceleration.
 
         std::unique_ptr<GeometricController> controller_;
+
+        // --- True-state estimation (owned by the Gazebo update thread) ---
+        ignition::math::Vector3d prevVel_;                                  ///< Previous step's world linear velocity, for the finite difference.
+        ignition::math::Vector3d accelWorld_;                               ///< Filtered world-frame linear acceleration of the base link.
+        common::Time prevStateTime_;                                        ///< Sim time the previous velocity sample was taken at.
+        common::Time lastStatePubTime_;                                     ///< Sim time the last state message was published at.
+        bool hasPrevState_ = false;                                         ///< False until a first velocity sample exists to difference against.
+        bool hasPublishedState_ = false;                                    ///< False until the first state message has gone out.
 
     };
 

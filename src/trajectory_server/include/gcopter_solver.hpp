@@ -41,6 +41,7 @@
 
 #include <Eigen/Eigen>
 
+#include <algorithm>
 #include <cmath>
 #include <cfloat>
 #include <iostream>
@@ -92,6 +93,38 @@ namespace trajectory_server
 
         PolyhedraV vPolytopes;
         PolyhedraH hPolytopes;
+        // hPolytopes shrunk inward by the safety margin. The corridor plays two
+        // independent roles and they want different geometry:
+        //
+        //   hPolytopes       -> processCorridor() -> vPolytopes, which is what
+        //                       PARAMETERIZES the waypoints. This one must keep
+        //                       its overlaps: shrinking it is what made setup()
+        //                       reject corridors that were perfectly fine.
+        //   penaltyPolytopes -> attachPenaltyFunctional(), the SOFT containment
+        //                       penalty. This is the only thing that creates
+        //                       standoff, because smoothedL1() is exactly zero
+        //                       anywhere inside the polytope -- so with no
+        //                       margin the trajectory pays nothing for riding
+        //                       the boundary and time-minimization pushes it
+        //                       there.
+        //
+        // Shrinking only the penalty copy gets the clearance without ever
+        // costing an overlap. The offset is additionally capped, per polytope,
+        // by buildPenaltyPolytopes() -- an over-shrunk penalty polytope is NOT
+        // free. Once it has no interior the containment term is unsatisfiable
+        // at every sample point, which leaves an irreducible cost floor at the
+        // full position weight competing with the time and dynamics terms, and
+        // near a handoff it fights the waypoint that the (unshrunk) overlap
+        // parameterization is holding there. Capping keeps both the penalty
+        // polytopes and their consecutive intersections non-empty. It is also
+        // strictly safer than the old scheme -- the penalty activates earlier
+        // than it would on the raw corridor, so containment in the true
+        // corridor is enforced at least as hard.
+        PolyhedraH penaltyPolytopes;
+        // Inward offset actually applied to each penalty polytope: the
+        // requested margin wherever the corridor could afford it, less where
+        // buildPenaltyPolytopes() had to cap it. Kept for diagnostics.
+        Eigen::VectorXd appliedMargins;
         Eigen::Matrix2Xd shortPath;
 
         Eigen::VectorXi pieceIdx;
@@ -567,7 +600,7 @@ namespace trajectory_server
             obj.minco.getEnergyPartialGradByTimes(obj.partialGradByTimes);
 
             attachPenaltyFunctional(obj.times, obj.minco.getCoeffs(),
-                                    obj.hPolyIdx, obj.hPolytopes,
+                                    obj.hPolyIdx, obj.penaltyPolytopes,
                                     obj.smoothEps, obj.integralRes,
                                     obj.magnitudeBd, obj.penaltyWt, obj.curvatureEps,
                                     cost, obj.partialGradByTimes, obj.partialGradByCoeffs);
@@ -715,6 +748,75 @@ namespace trajectory_server
             return;
         }
 
+        // Fraction of a polytope's inscribed radius that the safety margin is
+        // allowed to consume. The complement is what survives as interior, so
+        // this is the single knob trading standoff against the guarantee below;
+        // anything strictly less than 1 preserves it.
+        static constexpr double marginRetention = 0.8;
+
+        // Builds the shrunk penalty copy of the corridor, capping the inward
+        // offset per polytope so the shrink can never collapse a polytope or,
+        // just as important, one of the consecutive overlaps.
+        //
+        // Every row is unit-normal by the time this runs, so adding t to every
+        // offset yields the inner parallel body at distance t, whose Chebyshev
+        // radius is EXACTLY r - t. That identity makes the safe cap
+        // closed-form rather than a search: t <= marginRetention * r leaves
+        // (1 - marginRetention) * r of interior, positive whenever the raw
+        // polytope had any.
+        //
+        // The same identity governs each consecutive intersection, which
+        // shrinks by at most max(t_i, t_{i+1}) once both sides are offset. So
+        // capping BOTH ends against that intersection's own radius is what
+        // keeps the corridor sequentially overlapping after the shrink -- the
+        // property processCorridor()'s decomposition and the waypoint
+        // parameterization both rest on, and the one a uniform margin was free
+        // to destroy in exactly the narrow passages where clearance matters
+        // most. The caps only ever lower t, so their order does not matter:
+        // each ends at min(margin, its own radius cap, the caps of the
+        // overlaps on either side).
+        //
+        // Cost is 2 * polyN - 1 Seidel LPs in 3 variables per setup(),
+        // negligible beside the L-BFGS solve that follows.
+        static inline void buildPenaltyPolytopes(const PolyhedraH &hPs,
+                                                 const double &safetyMargin,
+                                                 PolyhedraH &penaltyPs,
+                                                 Eigen::VectorXd &margins)
+        {
+            const int n = static_cast<int>(hPs.size());
+            penaltyPs = hPs;
+            margins.setConstant(n, 0.0);
+            if (n == 0 || !(safetyMargin > 0.0))
+            {
+                return;
+            }
+
+            // A degenerate polytope reports a non-positive (or infinite)
+            // radius; max() then leaves its margin at zero rather than
+            // propagating the garbage into the offsets.
+            Eigen::Vector2d centre;
+            for (int i = 0; i < n; i++)
+            {
+                const double radius = geo_utils::inscribedRadius2d(hPs[i], centre);
+                margins(i) = std::min(safetyMargin,
+                                      std::max(0.0, marginRetention * radius));
+            }
+
+            for (int i = 0; i + 1 < n; i++)
+            {
+                const double overlapRadius =
+                    geo_utils::overlapRadius2d(hPs[i], hPs[i + 1], centre);
+                const double cap = std::max(0.0, marginRetention * overlapRadius);
+                margins(i) = std::min(margins(i), cap);
+                margins(i + 1) = std::min(margins(i + 1), cap);
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                penaltyPs[i].rightCols<1>().array() += margins(i);
+            }
+        }
+
         static inline bool processCorridor(const PolyhedraH &hPs,
                                            PolyhedraV &vPs)
         {
@@ -795,6 +897,38 @@ namespace trajectory_server
             }
         }
 
+        // Projects a boundary state's velocity and acceleration onto what the
+        // base can actually drive, mirroring the quadrotor branch.
+        //
+        // This matters because the initial state is MEASURED off the robot: a
+        // wheel slip, a controller overshoot or a differentiation spike can
+        // hand us a boundary condition outside the envelope the penalty
+        // functional enforces everywhere else. Unlike those penalties the
+        // boundary condition is hard -- MINCO interpolates through it exactly
+        // -- so an infeasible one poisons the entire solve instead of merely
+        // costing a penalty term.
+        //
+        // A differential-drive base has no thrust envelope or tilt to reason
+        // about, so unlike the quadrotor's version this is a plain magnitude
+        // clamp on each of the two bounded quantities: speed to v_max and
+        // acceleration to a_max.
+        inline void clampBoundaryState(BoundaryT &state) const
+        {
+            const double vMax = magnitudeBd(0);
+            const double vNorm = state.col(1).norm();
+            if (vNorm > vMax)
+            {
+                state.col(1) *= vMax / vNorm;
+            }
+
+            const double aMax = magnitudeBd(1);
+            const double aNorm = state.col(2).norm();
+            if (aNorm > aMax)
+            {
+                state.col(2) *= aMax / aNorm;
+            }
+        }
+
     public:
         // magnitudeBounds = [v_max, a_max, omega_max]^T
         // penaltyWeights  = [pos_weight, vel_weight, acc_weight, omega_weight]^T
@@ -804,7 +938,9 @@ namespace trajectory_server
                          const BoundaryT &initialState,
                          const BoundaryT &terminalState,
                          const PolyhedraH &safeCorridor,
+                         const double &safetyMargin,
                          const double &lengthPerPiece,
+                         const int &piecesPerPolytope,
                          const double &smoothingFactor,
                          const int &integralResolution,
                          const Eigen::VectorXd &magnitudeBounds,
@@ -827,6 +963,15 @@ namespace trajectory_server
                 return false;
             }
 
+            // After the normalization above every row has unit normal, so
+            // shifting an offset by t moves that half-space inward by exactly
+            // t metres -- the identity buildPenaltyPolytopes() relies on to cap
+            // the shrink. Built from the already-normalized hPolytopes and only
+            // after processCorridor() has done its work, so the margin cannot
+            // influence the decomposition.
+            buildPenaltyPolytopes(hPolytopes, safetyMargin,
+                                  penaltyPolytopes, appliedMargins);
+
             polyN = hPolytopes.size();
             smoothEps = smoothingFactor;
             integralRes = integralResolution;
@@ -835,11 +980,31 @@ namespace trajectory_server
             curvatureEps = curvatureSmoothEps;
             allocSpeed = magnitudeBd(0) * 3.0;
 
+            // Only now is magnitudeBd populated, so this is the earliest the
+            // boundary states can be clamped. Position is untouched, so
+            // getShortestPath below is unaffected.
+            clampBoundaryState(headState);
+            clampBoundaryState(tailState);
+
             getShortestPath(headState.col(0), tailState.col(0),
                             vPolytopes, smoothEps, shortPath);
-            const Eigen::Matrix2Xd deltas = shortPath.rightCols(polyN) - shortPath.leftCols(polyN);
-            pieceIdx = (deltas.colwise().norm() / lengthPerPiece).cast<int>().transpose();
-            pieceIdx.array() += 1;
+            if (piecesPerPolytope > 0)
+            {
+                // Fixed budget per polytope. With 1, every interior waypoint
+                // lands in an overlap region between consecutive polytopes
+                // (see the vPolyIdx assignment below), which is the tightest
+                // parameterization the corridor admits: the trajectory has just
+                // enough freedom to thread the overlaps in order and none left
+                // over to wander inside a polytope and tie a knot.
+                pieceIdx.setConstant(polyN, piecesPerPolytope);
+            }
+            else
+            {
+                // Adaptive: as many pieces as the shortest path is long.
+                const Eigen::Matrix2Xd deltas = shortPath.rightCols(polyN) - shortPath.leftCols(polyN);
+                pieceIdx = (deltas.colwise().norm() / lengthPerPiece).cast<int>().transpose();
+                pieceIdx.array() += 1;
+            }
             pieceN = pieceIdx.sum();
 
             temporalDim = pieceN;
@@ -877,8 +1042,23 @@ namespace trajectory_server
             return true;
         }
 
+        // Inward offset actually applied to each polytope's penalty copy, in
+        // corridor order. Equal to the requested safety margin wherever the
+        // corridor was wide enough to give it up, smaller where the polytope
+        // or one of its overlaps was too narrow. Valid after setup() returns
+        // true; empty before that.
+        inline const Eigen::VectorXd &getAppliedMargins() const
+        {
+            return appliedMargins;
+        }
+
+        // maxIterations bounds the solve so one bad corridor cannot stall a
+        // receding-horizon replan; 0 leaves L-BFGS uncapped. Hitting the cap
+        // returns LBFGSERR_MAXIMUMITERATION (negative), so the partial iterate
+        // is discarded and the caller keeps its previous trajectory.
         inline double optimize(Trajectory<Degree, 2> &traj,
-                               const double &relCostTol)
+                               const double &relCostTol,
+                               const int &maxIterations)
         {
             Eigen::VectorXd x(temporalDim + spatialDim);
             Eigen::Map<Eigen::VectorXd> tau(x.data(), temporalDim);
@@ -894,6 +1074,7 @@ namespace trajectory_server
             lbfgs_params.min_step = 1.0e-32;
             lbfgs_params.g_epsilon = 0.0;
             lbfgs_params.delta = relCostTol;
+            lbfgs_params.max_iterations = maxIterations;
 
             int ret = lbfgs::lbfgs_optimize(x,
                                             minCostFunctional,
@@ -951,6 +1132,7 @@ namespace trajectory_server
 
 #include <Eigen/Eigen>
 
+#include <algorithm>
 #include <cmath>
 #include <cfloat>
 #include <iostream>
@@ -1002,6 +1184,38 @@ namespace trajectory_server
 
         PolyhedraV vPolytopes;
         PolyhedraH hPolytopes;
+        // hPolytopes shrunk inward by the safety margin. The corridor plays two
+        // independent roles and they want different geometry:
+        //
+        //   hPolytopes       -> processCorridor() -> vPolytopes, which is what
+        //                       PARAMETERIZES the waypoints. This one must keep
+        //                       its overlaps: shrinking it is what made setup()
+        //                       reject corridors that were perfectly fine.
+        //   penaltyPolytopes -> attachPenaltyFunctional(), the SOFT containment
+        //                       penalty. This is the only thing that creates
+        //                       standoff, because smoothedL1() is exactly zero
+        //                       anywhere inside the polytope -- so with no
+        //                       margin the trajectory pays nothing for riding
+        //                       the boundary and time-minimization pushes it
+        //                       there.
+        //
+        // Shrinking only the penalty copy gets the clearance without ever
+        // costing an overlap. The offset is additionally capped, per polytope,
+        // by buildPenaltyPolytopes() -- an over-shrunk penalty polytope is NOT
+        // free. Once it has no interior the containment term is unsatisfiable
+        // at every sample point, which leaves an irreducible cost floor at the
+        // full position weight competing with the time and dynamics terms, and
+        // near a handoff it fights the waypoint that the (unshrunk) overlap
+        // parameterization is holding there. Capping keeps both the penalty
+        // polytopes and their consecutive intersections non-empty. It is also
+        // strictly safer than the old scheme -- the penalty activates earlier
+        // than it would on the raw corridor, so containment in the true
+        // corridor is enforced at least as hard.
+        PolyhedraH penaltyPolytopes;
+        // Inward offset actually applied to each penalty polytope: the
+        // requested margin wherever the corridor could afford it, less where
+        // buildPenaltyPolytopes() had to cap it. Kept for diagnostics.
+        Eigen::VectorXd appliedMargins;
         Eigen::Matrix3Xd shortPath;
 
         Eigen::VectorXi pieceIdx;
@@ -1471,7 +1685,7 @@ namespace trajectory_server
             obj.minco.getEnergyPartialGradByTimes(obj.partialGradByTimes);
 
             attachPenaltyFunctional(obj.times, obj.minco.getCoeffs(),
-                                    obj.hPolyIdx, obj.hPolytopes,
+                                    obj.hPolyIdx, obj.penaltyPolytopes,
                                     obj.smoothEps, obj.integralRes,
                                     obj.magnitudeBd, obj.penaltyWt, obj.flatmap,
                                     cost, obj.partialGradByTimes, obj.partialGradByCoeffs);
@@ -1619,6 +1833,75 @@ namespace trajectory_server
             return;
         }
 
+        // Fraction of a polytope's inscribed radius that the safety margin is
+        // allowed to consume. The complement is what survives as interior, so
+        // this is the single knob trading standoff against the guarantee below;
+        // anything strictly less than 1 preserves it.
+        static constexpr double marginRetention = 0.8;
+
+        // Builds the shrunk penalty copy of the corridor, capping the inward
+        // offset per polytope so the shrink can never collapse a polytope or,
+        // just as important, one of the consecutive overlaps.
+        //
+        // Every row is unit-normal by the time this runs, so adding t to every
+        // offset yields the inner parallel body at distance t, whose Chebyshev
+        // radius is EXACTLY r - t. That identity makes the safe cap
+        // closed-form rather than a search: t <= marginRetention * r leaves
+        // (1 - marginRetention) * r of interior, positive whenever the raw
+        // polytope had any.
+        //
+        // The same identity governs each consecutive intersection, which
+        // shrinks by at most max(t_i, t_{i+1}) once both sides are offset. So
+        // capping BOTH ends against that intersection's own radius is what
+        // keeps the corridor sequentially overlapping after the shrink -- the
+        // property processCorridor()'s decomposition and the waypoint
+        // parameterization both rest on, and the one a uniform margin was free
+        // to destroy in exactly the narrow passages where clearance matters
+        // most. The caps only ever lower t, so their order does not matter:
+        // each ends at min(margin, its own radius cap, the caps of the
+        // overlaps on either side).
+        //
+        // Cost is 2 * polyN - 1 Seidel LPs in 4 variables per setup(),
+        // negligible beside the L-BFGS solve that follows.
+        static inline void buildPenaltyPolytopes(const PolyhedraH &hPs,
+                                                 const double &safetyMargin,
+                                                 PolyhedraH &penaltyPs,
+                                                 Eigen::VectorXd &margins)
+        {
+            const int n = static_cast<int>(hPs.size());
+            penaltyPs = hPs;
+            margins.setConstant(n, 0.0);
+            if (n == 0 || !(safetyMargin > 0.0))
+            {
+                return;
+            }
+
+            // A degenerate polytope reports a non-positive (or infinite)
+            // radius; max() then leaves its margin at zero rather than
+            // propagating the garbage into the offsets.
+            Eigen::Vector3d centre;
+            for (int i = 0; i < n; i++)
+            {
+                const double radius = geo_utils::inscribedRadius(hPs[i], centre);
+                margins(i) = std::min(safetyMargin,
+                                      std::max(0.0, marginRetention * radius));
+            }
+
+            for (int i = 0; i + 1 < n; i++)
+            {
+                const double overlapRadius =
+                    geo_utils::overlapRadius(hPs[i], hPs[i + 1], centre);
+                const double cap = std::max(0.0, marginRetention * overlapRadius);
+                margins(i) = std::min(margins(i), cap);
+                margins(i + 1) = std::min(margins(i + 1), cap);
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                penaltyPs[i].rightCols<1>().array() += margins(i);
+            }
+        }
+
         static inline bool processCorridor(const PolyhedraH &hPs,
                                            PolyhedraV &vPs)
         {
@@ -1699,6 +1982,75 @@ namespace trajectory_server
             }
         }
 
+        // Projects a boundary state's velocity and acceleration onto what the
+        // vehicle can actually fly, mirroring traj_opt's setBoundConds.
+        //
+        // This matters because the initial state is MEASURED off the vehicle: a
+        // gust, a controller overshoot or a differentiation spike can hand us a
+        // boundary condition outside the envelope the penalty functional
+        // enforces everywhere else. Unlike those penalties the boundary
+        // condition is hard -- MINCO interpolates through it exactly -- so an
+        // infeasible one poisons the entire solve instead of merely costing a
+        // penalty term.
+        //
+        // Velocity clamps to v_max. Acceleration is clamped through the same
+        // quantity the flatness map actually bounds: the drag-free specific
+        // thrust f = a + g*e3, whose norm is thrust/mass and whose angle from
+        // vertical is the tilt. Tilt is fixed first, by shrinking the horizontal
+        // component while preserving the vertical one that holds the vehicle up;
+        // the norm is then scaled into [thrust_min, thrust_max]/mass. Scaling f
+        // does not change its tilt, so the two steps cannot fight each other.
+        inline void clampBoundaryState(BoundaryT &state) const
+        {
+            const double vMax = magnitudeBd(0);
+            const double vNorm = state.col(1).norm();
+            if (vNorm > vMax)
+            {
+                state.col(1) *= vMax / vNorm;
+            }
+
+            const double mass = physicalPm(0);
+            const double grav = physicalPm(1);
+            const double thetaMax = magnitudeBd(2);
+            const double fMin = magnitudeBd(3) / mass;
+            const double fMax = magnitudeBd(4) / mass;
+
+            Eigen::Vector3d f = state.col(2);
+            f(2) += grav;
+
+            if (f(2) <= 0.0)
+            {
+                // Tilted at or past horizontal: no thrust vector realizes this,
+                // so fall back to the minimum-thrust hover direction.
+                f = Eigen::Vector3d(0.0, 0.0, fMin);
+            }
+            else
+            {
+                if (thetaMax < M_PI_2)
+                {
+                    const double fhMax = f(2) * std::tan(thetaMax);
+                    const double fhNorm = f.head<2>().norm();
+                    if (fhNorm > fhMax)
+                    {
+                        f.head<2>() *= fhMax / fhNorm;
+                    }
+                }
+                // f(2) > 0 here, so fNorm > 0 and neither scaling divides by zero.
+                const double fNorm = f.norm();
+                if (fNorm < fMin)
+                {
+                    f *= fMin / fNorm;
+                }
+                else if (fNorm > fMax)
+                {
+                    f *= fMax / fNorm;
+                }
+            }
+
+            f(2) -= grav;
+            state.col(2) = f;
+        }
+
     public:
         // magnitudeBounds = [v_max, omg_max, theta_max, thrust_min, thrust_max]^T
         // penaltyWeights = [pos_weight, vel_weight, omg_weight, theta_weight, thrust_weight]^T
@@ -1708,7 +2060,9 @@ namespace trajectory_server
                          const BoundaryT &initialState,
                          const BoundaryT &terminalState,
                          const PolyhedraH &safeCorridor,
+                         const double &safetyMargin,
                          const double &lengthPerPiece,
+                         const int &piecesPerPolytope,
                          const double &smoothingFactor,
                          const int &integralResolution,
                          const Eigen::VectorXd &magnitudeBounds,
@@ -1731,6 +2085,15 @@ namespace trajectory_server
                 return false;
             }
 
+            // After the normalization above every row has unit normal, so
+            // shifting an offset by t moves that half-space inward by exactly
+            // t metres -- the identity buildPenaltyPolytopes() relies on to cap
+            // the shrink. Built from the already-normalized hPolytopes and only
+            // after processCorridor() has done its work, so the margin cannot
+            // influence the decomposition.
+            buildPenaltyPolytopes(hPolytopes, safetyMargin,
+                                  penaltyPolytopes, appliedMargins);
+
             polyN = hPolytopes.size();
             smoothEps = smoothingFactor;
             integralRes = integralResolution;
@@ -1739,11 +2102,31 @@ namespace trajectory_server
             physicalPm = physicalParams;
             allocSpeed = magnitudeBd(0) * 3.0;
 
+            // Only now are magnitudeBd/physicalPm populated, so this is the
+            // earliest the boundary states can be clamped. Position is
+            // untouched, so getShortestPath below is unaffected.
+            clampBoundaryState(headState);
+            clampBoundaryState(tailState);
+
             getShortestPath(headState.col(0), tailState.col(0),
                             vPolytopes, smoothEps, shortPath);
-            const Eigen::Matrix3Xd deltas = shortPath.rightCols(polyN) - shortPath.leftCols(polyN);
-            pieceIdx = (deltas.colwise().norm() / lengthPerPiece).cast<int>().transpose();
-            pieceIdx.array() += 1;
+            if (piecesPerPolytope > 0)
+            {
+                // Fixed budget per polytope. With 1, every interior waypoint
+                // lands in an overlap region between consecutive polytopes
+                // (see the vPolyIdx assignment below), which is the tightest
+                // parameterization the corridor admits: the trajectory has just
+                // enough freedom to thread the overlaps in order and none left
+                // over to wander inside a polytope and tie a knot.
+                pieceIdx.setConstant(polyN, piecesPerPolytope);
+            }
+            else
+            {
+                // Adaptive: as many pieces as the shortest path is long.
+                const Eigen::Matrix3Xd deltas = shortPath.rightCols(polyN) - shortPath.leftCols(polyN);
+                pieceIdx = (deltas.colwise().norm() / lengthPerPiece).cast<int>().transpose();
+                pieceIdx.array() += 1;
+            }
             pieceN = pieceIdx.sum();
 
             temporalDim = pieceN;
@@ -1783,8 +2166,24 @@ namespace trajectory_server
             return true;
         }
 
+        // Inward offset actually applied to each polytope's penalty copy, in
+        // corridor order. Equal to the requested safety margin wherever the
+        // corridor was wide enough to give it up, smaller where the polytope
+        // or one of its overlaps was too narrow. Valid after setup() returns
+        // true; empty before that.
+        inline const Eigen::VectorXd &getAppliedMargins() const
+        {
+            return appliedMargins;
+        }
+
+        // maxIterations bounds the solve so one bad corridor cannot stall a
+        // receding-horizon replan; 0 leaves L-BFGS uncapped. Hitting the cap
+        // returns LBFGSERR_MAXIMUMITERATION (negative), so the partial iterate
+        // is discarded and the caller keeps its previous trajectory -- the same
+        // way traj_opt treats its earlyExit cancellation as a failed solve.
         inline double optimize(Trajectory<Degree> &traj,
-                               const double &relCostTol)
+                               const double &relCostTol,
+                               const int &maxIterations)
         {
             Eigen::VectorXd x(temporalDim + spatialDim);
             Eigen::Map<Eigen::VectorXd> tau(x.data(), temporalDim);
@@ -1800,6 +2199,7 @@ namespace trajectory_server
             lbfgs_params.min_step = 1.0e-32;
             lbfgs_params.g_epsilon = 0.0;
             lbfgs_params.delta = relCostTol;
+            lbfgs_params.max_iterations = maxIterations;
 
             int ret = lbfgs::lbfgs_optimize(x,
                                             minCostFunctional,
@@ -1832,7 +2232,6 @@ namespace trajectory_server
 } // namespace traj_opt
 
 #endif // TRAJ_OPT_GCOPTER_SOLVER_HPP
-
 #else
 #error "trajectory_server supports only PATHCOVER_DIM=2 or 3"
 #endif

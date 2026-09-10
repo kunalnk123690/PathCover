@@ -38,6 +38,19 @@ namespace gazebo {
         if (sdf->HasElement("trajectoryTopic")) {
             trajectoryTopicName_ = sdf->Get<std::string>("trajectoryTopic");
         }
+        stateTopicName_ = sdf->HasElement("stateTopic")
+                              ? sdf->Get<std::string>("stateTopic")
+                              : std::string("/quadrotor/state");
+        // Physics steps at ~1 kHz; publishing every one of them is more than any
+        // consumer needs, so throttle the message while still advancing the
+        // acceleration filter at the full step rate.
+        const double stateRate = sdf->HasElement("stateUpdateRate")
+                                     ? sdf->Get<double>("stateUpdateRate")
+                                     : 500.0;
+        statePublishPeriod_ = stateRate > 0.0 ? 1.0 / stateRate : 0.0;
+        accelFilterTau_ = sdf->HasElement("accelFilterTau")
+                              ? sdf->Get<double>("accelFilterTau")
+                              : 0.02;
         if (sdf->HasElement("KP")) {
             Kp_ = sdf->Get<ignition::math::Vector3d>("KP");
         }
@@ -91,6 +104,10 @@ namespace gazebo {
                                         boost::bind(&QuadrotorGazeboPlugin::TrajectoryCommandCallback, this, _1),
                                         ros::VoidPtr(), &rosQueue_);
         trajectorySub_ = rosNode_->subscribe(sub);
+
+        // Latched so a planner that starts late still gets a state immediately
+        // rather than hovering until the next message.
+        statePub_ = rosNode_->advertise<quadrotor_msgs::State>(stateTopicName_, 1, true);
         
 
         // Connect the OnUpdate method to Gazebo's world update event
@@ -113,7 +130,12 @@ namespace gazebo {
     void QuadrotorGazeboPlugin::OnUpdate(const common::UpdateInfo &info) {
         auto link = model_->GetLink(frame_);
         if (!link) return;
-        
+
+        // Publish the true state before (and independently of) the control law.
+        // A planner needs a state before it can emit its first command, so
+        // gating this on has_cmd_ below would deadlock the two.
+        PublishState(link, info.simTime);
+
         // Lock the mutex and apply control inputs
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -160,6 +182,75 @@ namespace gazebo {
             link->AddRelativeForce(force);
             link->AddRelativeTorque(torque);
         }
+    }
+
+
+    /**
+     * @brief Estimates the base link's acceleration and publishes its true state.
+     * @param[in] link The link whose state is published.
+     * @param[in] simTime Current simulation time.
+     * @details Acceleration is differentiated from the link's world linear velocity rather than
+     * read from `Link::WorldLinearAccel()`. That accessor divides ODE's force accumulator by the
+     * mass, and the accumulator is cleared after every step, so when read at WorldUpdateBegin --
+     * before this step's thrust has been applied -- it reports very nearly zero. Differentiating
+     * the integrator's own velocity instead yields the true kinematic acceleration (zero in hover,
+     * -g in free fall), which is exactly the boundary condition a differentially-flat planner
+     * wants for its initial state.
+     */
+    void QuadrotorGazeboPlugin::PublishState(const physics::LinkPtr &link, const common::Time &simTime) {
+        const ignition::math::Pose3d pose = link->WorldPose();
+        const ignition::math::Vector3d vel = link->WorldLinearVel();
+        const ignition::math::Vector3d omegaWorld = link->WorldAngularVel();
+
+        const double dt = (simTime - prevStateTime_).Double();
+        if (!hasPrevState_ || dt <= 0.0) {
+            // First sample, or the world was reset and sim time jumped backwards.
+            // Restart the estimator rather than emit a spurious acceleration spike.
+            accelWorld_.Set(0.0, 0.0, 0.0);
+            hasPublishedState_ = false;
+            hasPrevState_ = true;
+        } else {
+            const ignition::math::Vector3d rawAccel = (vel - prevVel_) / dt;
+            const double alpha = accelFilterTau_ > 0.0 ? dt / (accelFilterTau_ + dt) : 1.0;
+            accelWorld_ += (rawAccel - accelWorld_) * alpha;
+        }
+        prevVel_ = vel;
+        prevStateTime_ = simTime;
+
+        if (hasPublishedState_ && statePublishPeriod_ > 0.0 &&
+            (simTime - lastStatePubTime_).Double() < statePublishPeriod_) {
+            return;
+        }
+        lastStatePubTime_ = simTime;
+        hasPublishedState_ = true;
+
+        quadrotor_msgs::State msg;
+        msg.header.stamp = ros::Time(simTime.sec, simTime.nsec);
+        msg.header.frame_id = "world";
+
+        msg.pose.position.x = pose.Pos().X();
+        msg.pose.position.y = pose.Pos().Y();
+        msg.pose.position.z = pose.Pos().Z();
+        msg.pose.orientation.w = pose.Rot().W();
+        msg.pose.orientation.x = pose.Rot().X();
+        msg.pose.orientation.y = pose.Rot().Y();
+        msg.pose.orientation.z = pose.Rot().Z();
+
+        msg.velocity.x = vel.X();
+        msg.velocity.y = vel.Y();
+        msg.velocity.z = vel.Z();
+
+        msg.acceleration.x = accelWorld_.X();
+        msg.acceleration.y = accelWorld_.Y();
+        msg.acceleration.z = accelWorld_.Z();
+
+        // Body frame, same convention as the angular velocity handed to the controller.
+        const ignition::math::Vector3d omegaBody = pose.Rot().RotateVectorReverse(omegaWorld);
+        msg.angular_velocity.x = omegaBody.X();
+        msg.angular_velocity.y = omegaBody.Y();
+        msg.angular_velocity.z = omegaBody.Z();
+
+        statePub_.publish(msg);
     }
 
 

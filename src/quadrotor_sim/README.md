@@ -1,7 +1,6 @@
 # quadrotor_sim
 
-The test vehicle and its environment. Nothing here is required by PathCover — it exists so the
-corridor generator and the optimizer can be exercised in closed loop against a simulated LiDAR.
+The quadrotor test vehicle and its environment with a simulated LiDAR (for additional sensors such as depth/monocular camera, imu etc just uncomment the lines in quadrotor.xacro).
 Swap it for a real robot (or a different simulator) and the rest of the stack is unchanged.
 
 Three catkin packages:
@@ -9,8 +8,8 @@ Three catkin packages:
 | Package | Contents |
 |---|---|
 | [`quadrotor_description`](quadrotor_description) | URDF/xacro robot and sensor descriptions, meshes, the Gazebo world, the RViz config, and the ground-truth TF/odometry node |
-| [`quadrotor_gazebo_plugin`](quadrotor_gazebo_plugin) | Gazebo model plugin: an SE(3) geometric tracking controller that turns a trajectory setpoint into a wrench on the base link |
-| [`quadrotor_msgs`](quadrotor_msgs) | `TrajectoryCommand` — the setpoint message between the optimizer and the controller |
+| [`quadrotor_gazebo_plugin`](quadrotor_gazebo_plugin) | Gazebo model plugin: an SE(3) geometric tracking controller that turns a trajectory setpoint into a wrench and publishes the base link's true state |
+| [`quadrotor_msgs`](quadrotor_msgs) | `TrajectoryCommand` setpoints and `State` feedback connecting the optimizer and controller plugin |
 
 ## The robot
 
@@ -18,9 +17,11 @@ Three catkin packages:
 airframe (`ixx = iyy = 0.007`, `izz = 0.012`) with three Gazebo attachments —
 
 - **`libgazebo_ros_p3d.so`** — ground-truth pose/twist of `base_link` in the `world` frame at
-  500 Hz on `/quadrotor/ground_truth`. No noise. This is what both the planner and the optimizer
-  use as odometry, so state estimation is deliberately out of the loop.
-- **`libquadrotor_gazebo_plugin.so`** — the geometric controller (below).
+  500 Hz on `/quadrotor/ground_truth`. No noise. The mapper, corridor planner, and
+  `quadrotor_ground_truth_node` use this odometry.
+- **`libquadrotor_gazebo_plugin.so`** — the geometric controller and the publisher of
+  `quadrotor_msgs/State` on `/quadrotor/state` (below). The trajectory optimizer uses this stream
+  because it includes acceleration as well as pose and velocity.
 - **`lidar.xacro`** — a VLP-16 (`libgazebo_ros_velodyne_laser.so`) on `lidar_link`, 0.25 m above
   the airframe: 440 × 16 beams over a full 360° azimuth and ±15° elevation, 0.1–100 m range,
   1 mm Gaussian noise, **5 Hz**. That 5 Hz is the replanning rate of the whole system —
@@ -43,6 +44,9 @@ Set as SDF elements on the plugin, so they live in the xacro rather than a yaml:
 | `KW` | `0.21 0.21 0.25` | Angular-velocity error gain |
 | `wrenchFrame` | `base_link` | Link the computed force/torque is applied to |
 | `trajectoryTopic` | `/quadrotor/trajectory` | Setpoint input |
+| `stateTopic` | `/quadrotor/state` | Latched true-state output |
+| `stateUpdateRate` | `500` | State publication rate (Hz); non-positive publishes every physics step |
+| `accelFilterTau` | `0.02` | Low-pass time constant for differentiated velocity (s); non-positive disables filtering |
 
 These are the aggressive set; a gentler set (`KP 6.4`, `KD 4.3`, `KR 1.0 1.0 0.77`,
 `KW 0.15 0.15 0.19`) is commented out directly above them and is the one to fall back to if the
@@ -58,7 +62,10 @@ singularities of an Euler-angle parameterization, which matters at the tilt angl
 is allowed to command (`theta_max` defaults to 45°).
 
 The plugin runs its ROS callbacks on a private callback queue in a separate thread, so message
-handling never blocks Gazebo's physics update.
+handling never blocks Gazebo's physics update. On every physics step it also samples the base
+link, estimates world-frame kinematic acceleration from successive velocity samples, and updates
+the acceleration filter even when state publication is throttled. State publication is independent
+of receiving a trajectory command, so the optimizer has an initial state before its first solve.
 
 Mass and inertia are read from the Gazebo model, not from a parameter file — but
 `trajectory_server`'s `vehicle_mass` is separate and must be kept in sync with the URDF
@@ -98,6 +105,23 @@ float64 yaw_acceleration
 A full differentially-flat setpoint. The optimizer fills position through jerk (snap is left at
 zero, and `yaw_acceleration` with it); the controller uses position/velocity/acceleration and yaw
 for tracking, with the higher derivatives available as feedforward terms.
+
+## `State`
+
+```
+Header header
+geometry_msgs/Pose pose
+geometry_msgs/Vector3 velocity
+geometry_msgs/Vector3 acceleration
+geometry_msgs/Vector3 angular_velocity
+```
+
+True state of `base_link`, published by `quadrotor_gazebo_plugin` on `/quadrotor/state`. Pose,
+linear velocity, and linear acceleration are expressed in `world`; angular velocity is expressed
+in the body frame. Acceleration is kinematic ($d^2p/dt^2$), so it is zero in hover and $-g$ in
+free fall rather than matching the proper acceleration of an IMU. The message is latched, and the
+trajectory optimizer uses its position, velocity, and acceleration as each replan's initial
+boundary state.
 
 ## The world
 
@@ -143,7 +167,7 @@ quadrotor_gazebo_plugin/
   include/       GeometricController.hpp (SE(3) control law), plugin header
   src/           plugin implementation
 quadrotor_msgs/
-  msg/           TrajectoryCommand.msg
+  msg/           TrajectoryCommand.msg, State.msg
 ```
 
 ## Dependencies

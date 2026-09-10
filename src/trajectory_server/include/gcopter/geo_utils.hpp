@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cstdint>
+#include <limits>
 #include <set>
 #include <vector>
 #include <chrono>
@@ -42,8 +43,16 @@ namespace geo_utils
 
     // Each row of hPoly is defined by h0, h1, h2, h3 as
     // h0*x + h1*y + h2*z + h3 <= 0
-    inline bool findInterior(const Eigen::MatrixX4d &hPoly,
-                             Eigen::Vector3d &interior)
+    // Radius of the largest ball that fits inside hPoly (its Chebyshev radius),
+    // with the ball's centre returned in `interior`. <= 0 means the polytope has
+    // no strict interior: either it is empty, or it is flat/degenerate.
+    //
+    // This is the quantity every corridor feasibility test in this file is
+    // really asking about, so it is exposed rather than collapsed straight into
+    // a bool -- a caller that has to explain WHY a corridor was rejected needs
+    // the number, not just the verdict.
+    inline double inscribedRadius(const Eigen::MatrixX4d &hPoly,
+                                  Eigen::Vector3d &interior)
     {
         const int m = hPoly.rows();
 
@@ -57,10 +66,32 @@ namespace geo_utils
         c.setZero();
         c(3) = -1.0;
 
+        // linprog maximizes the radius by minimizing its negation, so the
+        // optimal objective is -r. An infinite objective means the LP was
+        // infeasible or unbounded; neither is a usable polytope.
         const double minmaxsd = sdlp::linprog<4>(c, A, b, x);
         interior = x.head<3>();
 
-        return minmaxsd < 0.0 && !std::isinf(minmaxsd);
+        return std::isinf(minmaxsd) ? -std::numeric_limits<double>::infinity()
+                                    : -minmaxsd;
+    }
+
+    // Radius of the largest ball inside the INTERSECTION of two polytopes: the
+    // exact test processCorridor() applies to each consecutive pair.
+    inline double overlapRadius(const Eigen::MatrixX4d &hPoly0,
+                                const Eigen::MatrixX4d &hPoly1,
+                                Eigen::Vector3d &interior)
+    {
+        Eigen::MatrixX4d joint(hPoly0.rows() + hPoly1.rows(), 4);
+        joint.topRows(hPoly0.rows()) = hPoly0;
+        joint.bottomRows(hPoly1.rows()) = hPoly1;
+        return inscribedRadius(joint, interior);
+    }
+
+    inline bool findInterior(const Eigen::MatrixX4d &hPoly,
+                             Eigen::Vector3d &interior)
+    {
+        return inscribedRadius(hPoly, interior) > 0.0;
     }
 
     inline bool overlap(const Eigen::MatrixX4d &hPoly0,
@@ -189,8 +220,10 @@ namespace geo_utils
     // Each row of hPoly is h0, h1, h2 meaning h0*x + h1*y + h2 <= 0.
     // ------------------------------------------------------------------
 
-    inline bool findInterior2d(const Eigen::MatrixX3d &hPoly,
-                               Eigen::Vector2d &interior)
+    // Planar counterpart of inscribedRadius(): radius of the largest disc that
+    // fits inside hPoly, centre returned in `interior`.
+    inline double inscribedRadius2d(const Eigen::MatrixX3d &hPoly,
+                                    Eigen::Vector2d &interior)
     {
         const int m = hPoly.rows();
 
@@ -207,7 +240,24 @@ namespace geo_utils
         const double minmaxsd = sdlp::linprog<3>(c, A, b, x);
         interior = x.head<2>();
 
-        return minmaxsd < 0.0 && !std::isinf(minmaxsd);
+        return std::isinf(minmaxsd) ? -std::numeric_limits<double>::infinity()
+                                    : -minmaxsd;
+    }
+
+    inline double overlapRadius2d(const Eigen::MatrixX3d &hPoly0,
+                                  const Eigen::MatrixX3d &hPoly1,
+                                  Eigen::Vector2d &interior)
+    {
+        Eigen::MatrixX3d joint(hPoly0.rows() + hPoly1.rows(), 3);
+        joint.topRows(hPoly0.rows()) = hPoly0;
+        joint.bottomRows(hPoly1.rows()) = hPoly1;
+        return inscribedRadius2d(joint, interior);
+    }
+
+    inline bool findInterior2d(const Eigen::MatrixX3d &hPoly,
+                               Eigen::Vector2d &interior)
+    {
+        return inscribedRadius2d(hPoly, interior) > 0.0;
     }
 
     struct filterLess2d

@@ -52,6 +52,14 @@
         <plugin name="quadrotor_gazebo_plugin" filename="libquadrotor_gazebo_plugin.so">
             <wrenchFrame>base_link</wrenchFrame>
             <trajectoryTopic>/quadrotor/trajectory</trajectoryTopic>
+            <!-- True state of base_link (pose + world-frame linear velocity and
+                 acceleration). Unlike the p3d ground_truth odometry above this
+                 carries acceleration, so a planner can seed a replan from the
+                 vehicle's actual state. accelFilterTau is the time constant of
+                 the low-pass on the differentiated velocity; 0 disables it. -->
+            <stateTopic>/quadrotor/state</stateTopic>
+            <stateUpdateRate>500</stateUpdateRate>
+            <accelFilterTau>0.02</accelFilterTau>
             <!-- <KP>6.4 6.4 6.4</KP>
             <KD>4.3 4.3 4.3</KD>
             <KR>1.0 1.0 0.77</KR>

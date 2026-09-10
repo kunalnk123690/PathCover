@@ -62,6 +62,17 @@ namespace trajectory_server
                         const std::vector<Eigen::MatrixX3d> &hPolys,
                         const Eigen::Vector2d &goal);
 
+        // Index of the corridor polytope the replan should start from, given
+        // where the robot actually is. Operates on the RAW (unshrunk)
+        // corridor -- see the note on hPolys_.
+        int findStartPolytope(const Eigen::Vector2d &pos,
+                              const std::vector<Eigen::MatrixX3d> &hPolys) const;
+
+        // Reports which polytope or which consecutive overlap has no interior,
+        // so a failed replan names the cause instead of leaving GCOPTER's
+        // generic setup() warning to be guessed at.
+        void diagnoseCorridor(const std::vector<Eigen::MatrixX3d> &corridor) const;
+
         // Unicycle tracking law turning a reference (pos, vel, acc) sample and
         // the measured pose into a (v, omega) command.
         std::pair<double, double> calculateCommand(const Eigen::Vector2d &refPos,
@@ -96,7 +107,13 @@ namespace trajectory_server
         double smoothingEps_;
         int integralRes_;
         double lengthPerPiece_;
+        // > 0 pins each corridor polytope to exactly this many MINCO pieces;
+        // 0 falls back to allocating by path length via lengthPerPiece_.
+        int piecesPerPolytope_;
         double relCostTol_;
+        // Bounds a single L-BFGS solve so one pathological corridor cannot
+        // stall the replan cycle; 0 leaves it uncapped.
+        int maxIterations_;
 
         // Which MINCO order to solve with: 3 = minimum jerk / degree-5
         // (default), 4 = minimum snap / degree-7.
@@ -138,6 +155,13 @@ namespace trajectory_server
         Eigen::Vector2d odomVel_;
         double odomYaw_;
         bool hasPoly_;
+        // RAW corridor (sliced to the plane, but NOT margin-shrunk): rows are
+        // [n^T, d] with n.x + d <= 0 and d = -b. The safety margin is
+        // deliberately not baked in here -- findStartPolytope() has to test
+        // containment against the corridor the robot is really driving in, and
+        // a margin-shrunk polytope can easily exclude a robot that is
+        // comfortably inside the true one. The margin is applied at replan
+        // time, after truncation.
         std::vector<Eigen::MatrixX3d> hPolys_;
         Eigen::Vector2d goal_;
 
@@ -165,10 +189,10 @@ namespace trajectory_server
 #define TRAJECTORY_SERVER_HPP
 
 #include <ros/ros.h>
-#include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <polytope_msgs/Polytopes.h>
+#include <quadrotor_msgs/State.h>
 #include <quadrotor_msgs/TrajectoryCommand.h>
 
 #include <Eigen/Eigen>
@@ -183,15 +207,18 @@ namespace trajectory_server
 {
 
     // Receding-horizon trajectory generator built on GCOPTER (MINCO + safe
-    // flight corridor). Subscribes/publishes on the exact same topics as the
-    // old Bezier-QP based trajectory_server node, so it is a drop-in swap.
+    // flight corridor). Publishes the same TrajectoryCommand on the same topic
+    // as the old Bezier-QP based trajectory_server node, but takes its vehicle
+    // state from quadrotor_msgs::State rather than nav_msgs::Odometry, since
+    // the initial boundary condition of each replan needs a measured
+    // acceleration and Odometry carries none.
     class TrajOptNode
     {
     public:
         explicit TrajOptNode(ros::NodeHandle &nh);
 
     private:
-        void odomCallback(const nav_msgs::Odometry::ConstPtr &msg);
+        void stateCallback(const quadrotor_msgs::State::ConstPtr &msg);
         void polytopesCallback(const polytope_msgs::Polytopes::ConstPtr &msg);
         void controlLoopCallback(const ros::TimerEvent &event);
 
@@ -210,6 +237,17 @@ namespace trajectory_server
                         const std::vector<Eigen::MatrixX4d> &hPolys,
                         const Eigen::Vector3d &goal);
 
+        // Index of the corridor polytope the replan should start from, given
+        // where the vehicle actually is. Operates on the RAW (unshrunk)
+        // corridor -- see the note on hPolys_.
+        int findStartPolytope(const Eigen::Vector3d &pos,
+                              const std::vector<Eigen::MatrixX4d> &hPolys) const;
+
+        // Reports which polytope or which consecutive overlap has no interior,
+        // so a failed replan names the cause instead of leaving GCOPTER's
+        // generic setup() warning to be guessed at.
+        void diagnoseCorridor(const std::vector<Eigen::MatrixX4d> &corridor) const;
+
         void publishHoverCommand(const Eigen::Vector3d &pos);
         void publishTrajectoryCommand(const Eigen::Vector3d &pos,
                                        const Eigen::Vector3d &vel,
@@ -224,14 +262,14 @@ namespace trajectory_server
 
         // --- ROS interface ---
         ros::NodeHandle nh_;
-        ros::Subscriber odomSub_;
+        ros::Subscriber stateSub_;
         ros::Subscriber polySub_;
         ros::Publisher trajPub_;
         ros::Publisher vizPub_;
         ros::Timer controlTimer_;
 
         // --- Topic params ---
-        std::string odomTopic_;
+        std::string stateTopic_;
         std::string trajTopic_;
         std::string polyTopic_;
 
@@ -244,7 +282,13 @@ namespace trajectory_server
         double smoothingEps_;
         int integralRes_;
         double lengthPerPiece_;
+        // > 0 pins each corridor polytope to exactly this many MINCO pieces;
+        // 0 falls back to allocating by path length via lengthPerPiece_.
+        int piecesPerPolytope_;
         double relCostTol_;
+        // Bounds a single L-BFGS solve so one pathological corridor cannot
+        // stall the replan cycle; 0 leaves it uncapped.
+        int maxIterations_;
 
         // Which MINCO order to solve with: 3 = minimum jerk / degree-5
         // (default), 4 = minimum snap / degree-7.
@@ -266,10 +310,20 @@ namespace trajectory_server
 
         // --- Shared state (locked by dataMutex_) ---
         std::mutex dataMutex_;
-        bool hasOdom_;
-        Eigen::Vector3d odomPos_;
-        Eigen::Vector3d odomVel_;
+        bool hasState_;
+        // Measured state of the vehicle, world frame, straight off the state
+        // topic. These are the only seed for every replan's initial boundary
+        // condition -- nothing here is ever re-sampled from a previous solve.
+        Eigen::Vector3d statePos_;
+        Eigen::Vector3d stateVel_;
+        Eigen::Vector3d stateAcc_;
         bool hasPoly_;
+        // RAW corridor, exactly as received: rows are [n^T, d] with n.x + d <= 0
+        // and d = -b. The safety margin is deliberately NOT baked in here --
+        // findStartPolytope() has to test containment against the corridor the
+        // vehicle is really flying in, and a margin-shrunk polytope can easily
+        // exclude a vehicle that is comfortably inside the true one. The margin
+        // is applied at replan time, after truncation.
         std::vector<Eigen::MatrixX4d> hPolys_;
         Eigen::Vector3d goal_;
 

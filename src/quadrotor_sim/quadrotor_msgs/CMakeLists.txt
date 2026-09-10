@@ -13,6 +13,7 @@ if(PATHCOVER_EXAMPLE STREQUAL "quadrotor")
   add_message_files(
     FILES
     TrajectoryCommand.msg
+    State.msg
   )
 
   generate_messages(
